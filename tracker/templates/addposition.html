@@ -1,0 +1,263 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intake · FX Wealth Tracker</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200..800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+
+<body>
+
+<canvas id="terrain" aria-hidden="true"></canvas>
+
+<div class="page-container">
+
+    <div class="form-card">
+
+        <div class="form-header">
+            <h1>Introduce a position.</h1>
+            <a href="{% url 'home' %}" class="secondary-button">
+                Return to the landscape
+            </a>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+            {% if form.errors %}
+                <div class="form-errors">
+                    <strong>The material rejected this entry:</strong>
+                    {{ form.non_field_errors }}
+                    <ul>
+                    {% for field, errors in form.errors.items %}
+                        <li><strong>{{ field }}</strong>: {{ errors|join:", " }}</li>
+                    {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+            {% if form.non_field_errors %}
+                <div class="form-errors">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="section-box">
+                <h3>01 · Classification</h3>
+
+                <div class="field-group">
+                    <label for="{{ form.asset_type.id_for_label }}">Asset Type</label>
+                    {{ form.asset_type }}
+                    <div class="field-error">{{ form.asset_type.errors }}</div>
+                </div>
+
+                <div class="field-group">
+                    <label for="{{ form.currency.id_for_label }}">Currency</label>
+                    {{ form.currency }}
+                    <small>The currency this position lives in — its internal light on the landscape.</small>
+                    <div class="field-error">{{ form.currency.errors }}</div>
+                </div>
+
+                <div class="field-group">
+                    <label for="{{ form.description.id_for_label }}">Description</label>
+                    {{ form.description }}
+                    <div class="field-error">{{ form.description.errors }}</div>
+                </div>
+            </div>
+
+            <div id="ticker-section" class="section-box">
+                <h3>02 · Listed instrument</h3>
+
+                <div class="field-group">
+                    <label for="{{ form.ticker.id_for_label }}">Ticker</label>
+                    {{ form.ticker }}
+                    <small>Only for listed equities and ETFs. Example: AAPL, SPY, VUSA.L</small>
+                    <div class="field-error">{{ form.ticker.errors }}</div>
+                </div>
+
+                <div class="field-group">
+                    <label for="{{ form.quantity.id_for_label }}">Quantity</label>
+                    {{ form.quantity }}
+                    <div class="field-error">{{ form.quantity.errors }}</div>
+                </div>
+            </div>
+
+            <div id="manual-section" class="section-box">
+                <h3>03 · Manual valuation</h3>
+
+                <div class="field-group">
+                    <label for="{{ form.manual_current_value.id_for_label }}">Manual Current Value</label>
+                    {{ form.manual_current_value }}
+                    <small>Use for cash, real estate, private holdings, bonds, and other manually valued assets.</small>
+                    <div class="field-error">{{ form.manual_current_value.errors }}</div>
+                </div>
+            </div>
+
+            <div id="acquisition-section" class="section-box">
+                <h3>04 · Acquisition</h3>
+
+                <div class="field-group">
+                    <label for="{{ form.acquisition_date.id_for_label }}">Acquisition Date</label>
+                    {{ form.acquisition_date }}
+                    <div class="field-error">{{ form.acquisition_date.errors }}</div>
+                </div>
+
+                <div class="field-group auto-lookup-toggle" id="auto-lookup-group">
+                    <label class="toggle-row" for="{{ form.auto_acquisition_value.id_for_label }}">
+                        {{ form.auto_acquisition_value }}
+                        <span class="toggle-text">
+                            <strong>Look up price automatically</strong>
+                            <small>We&rsquo;ll use the closing price on your acquisition date &times; quantity.</small>
+                        </span>
+                    </label>
+                    <div class="field-error">{{ form.auto_acquisition_value.errors }}</div>
+                </div>
+
+                <div class="field-group" id="acquisition-value-group">
+                    <label for="{{ form.acquisition_value.id_for_label }}">Acquisition Value</label>
+                    {{ form.acquisition_value }}
+                    <small>Total amount paid, in the asset&rsquo;s local currency (not per share).</small>
+                    <div class="field-error">{{ form.acquisition_value.errors }}</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary">Commit to the architecture</button>
+        </form>
+    </div>
+
+</div>
+
+<script>
+    // ---- element references ----
+    const assetTypeInput = document.getElementById("id_asset_type");
+
+    const tickerSection = document.getElementById("ticker-section");
+    const manualSection = document.getElementById("manual-section");
+
+    const tickerInput = document.getElementById("id_ticker");
+    const quantityInput = document.getElementById("id_quantity");
+    const manualValueInput = document.getElementById("id_manual_current_value");
+
+    // auto-lookup toggle — declared BEFORE updateFields() so it can use them
+    const autoToggle = document.getElementById("id_auto_acquisition_value");
+    const autoGroup = document.getElementById("auto-lookup-group");
+    const valueGroup = document.getElementById("acquisition-value-group");
+    const valueInput = document.getElementById("id_acquisition_value");
+
+    const tickerBasedAssets = ["listed_equity", "etf"];
+
+
+    // ---- helpers ----
+    function setSectionEnabled(section, enabled) {
+        const inputs = section.querySelectorAll("input, select, textarea");
+
+        if (enabled) {
+            section.classList.remove("disabled-section");
+        } else {
+            section.classList.add("disabled-section");
+        }
+
+        inputs.forEach(function (input) {
+            input.disabled = !enabled;
+        });
+    }
+
+    function syncAutoLookup() {
+        if (!autoToggle || !valueGroup || !valueInput) return;
+
+        if (autoToggle.checked) {
+            valueGroup.style.display = "none";
+            valueInput.value = "0";        // submit a placeholder, clean() overwrites it
+            valueInput.disabled = false;   // <-- keep it ENABLED so it submits
+        } else {
+            valueGroup.style.display = "";
+            valueInput.disabled = false;
+        }
+    }
+
+    function updateFields() {
+        const selectedAssetType = assetTypeInput.value;
+        const isTickerBased = tickerBasedAssets.includes(selectedAssetType);
+
+        if (isTickerBased) {
+            setSectionEnabled(tickerSection, true);
+            setSectionEnabled(manualSection, false);
+            manualValueInput.value = "";
+        } else {
+            setSectionEnabled(tickerSection, false);
+            setSectionEnabled(manualSection, true);
+            tickerInput.value = "";
+            quantityInput.value = "";
+        }
+
+        // auto-lookup only makes sense for ticker-based assets
+        if (autoGroup && autoToggle) {
+            if (isTickerBased) {
+                autoGroup.style.display = "";
+            } else {
+                autoGroup.style.display = "none";
+                autoToggle.checked = false;   // force off for manual-value assets
+            }
+            syncAutoLookup();                 // re-sync the value field either way
+        }
+    }
+
+
+    // ---- wire up ----
+    assetTypeInput.addEventListener("change", updateFields);
+
+    if (autoToggle) {
+        autoToggle.addEventListener("change", syncAutoLookup);
+    }
+
+    updateFields();   // apply on load (this also calls syncAutoLookup)
+</script>
+
+<script>
+/* quiet background terrain */
+(function () {
+    var c = document.getElementById("terrain");
+    if (!c) return;
+    var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var ctx = c.getContext("2d");
+    var w, h, dpr;
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        c.width = window.innerWidth * dpr; c.height = window.innerHeight * dpr;
+        w = c.width; h = c.height;
+    }
+    window.addEventListener("resize", resize);
+    resize();
+    var t = 0, last = 0;
+    function draw(now) {
+        var dt = Math.min((now - last) / 1000, 0.1); last = now; t += dt * 0.3;
+        ctx.clearRect(0, 0, w, h);
+        for (var i = 0; i < 14; i++) {
+            var base = h * (0.6 + i * 0.033);
+            ctx.beginPath();
+            var step = 10 * dpr;
+            for (var px = -step; px <= w + step; px += step) {
+                var x = px / w;
+                var y = base
+                    - Math.exp(-Math.pow((x - 0.85) / 0.22, 2)) * h * 0.09 * (1 - i / 18)
+                    - Math.sin(x * 8 + t * 0.3 + i * 0.3) * h * 0.008;
+                px <= 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+            }
+            ctx.strokeStyle = "rgba(42,56,72," + (0.026 + 0.018 * Math.exp(-i / 6)).toFixed(3) + ")";
+            ctx.lineWidth = dpr * 0.75;
+            ctx.stroke();
+        }
+        if (!RM) requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+})();
+</script>
+
+</body>
+</html>

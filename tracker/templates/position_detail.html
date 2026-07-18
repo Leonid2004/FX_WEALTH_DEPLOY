@@ -1,0 +1,725 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{{ position.ticker|default:"Position" }} · Instrument · FX Wealth Tracker</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200..800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'mainstyle.css' %}">
+</head>
+
+<body data-seed="pos-{{ position.pk }}">
+
+<canvas id="terrain" aria-hidden="true"></canvas>
+
+<header class="topline">
+    <a href="{% url 'home' %}" class="way-logo">FX&thinsp;/&thinsp;WEALTH</a>
+    <nav class="topline-nav">
+        <a href="{% url 'home' %}" class="way-action">&larr; 01 OVERVIEW</a>
+        <a href="{% url 'addpos' %}" class="way-action way-action--intake">+ INTAKE</a>
+        <form method="post" action="{% url 'logout' %}" class="logout-form">
+            {% csrf_token %}
+            <button type="submit" class="way-action way-action--exit">EXIT</button>
+        </form>
+    </nav>
+</header>
+
+<main class="sim-shell">
+
+    <section class="mast">
+        <p class="calib">Instrument · {{ position.get_asset_type_display }} · {{ position.currency }}</p>
+
+        <h1>
+            {% if position.ticker %}{{ position.ticker }}{% else %}{{ position.get_asset_type_display }}{% endif %}
+            {% if position.company_name %}<em style="display:block; font-size:0.38em; font-weight:450; letter-spacing:-0.01em; margin-top:14px; color: var(--ink-2);">{{ position.company_name }}</em>{% endif %}
+        </h1>
+
+        {% if position.description %}
+            <p class="mast-copy">{{ position.description }}</p>
+        {% endif %}
+
+        <div class="fact-rail num">
+            {% if position.quantity %}
+            <div class="fact">
+                <p class="calib calib--bare">Quantity</p>
+                <strong>{{ position.quantity|floatformat:2 }}</strong>
+            </div>
+            {% endif %}
+            <div class="fact">
+                <p class="calib calib--bare">Currency</p>
+                <strong>{{ position.currency }}</strong>
+            </div>
+            {% if sim.simulatable %}
+            <div class="fact">
+                <p class="calib calib--bare">Current value</p>
+                <strong>{{ sim.start_value|floatformat:2 }}<span class="unit">{{ base_currency }}</span></strong>
+            </div>
+            {% endif %}
+            <div class="fact" style="border-right:0;">
+                <p class="calib calib--bare">Adjust</p>
+                <strong><a href="{% url 'position_edit' position.pk %}" class="lens-link" style="font-size:10.5px;">Edit instrument</a></strong>
+            </div>
+        </div>
+    </section>
+
+    {% if not sim.simulatable %}
+
+        <section class="sim-void">
+            <p class="calib">Terrain unavailable</p>
+            <h2>The material refuses to guess.</h2>
+            <p class="reason">{{ sim.reason }}</p>
+            <p class="note">
+                Monte&nbsp;Carlo projection requires at least 500 trading days of
+                price history. Positions without sufficient market data — recent
+                listings, cash, real estate, private holdings — cannot be simulated
+                reliably, and no estimate is shown rather than an unreliable one.
+            </p>
+        </section>
+
+    {% else %}
+
+        <!-- ============ OBSERVATION RAIL ============ -->
+        <form method="get" class="observe-rail">
+            <div class="observe">
+                <label for="lookback">History sampled</label>
+                <select name="lookback" id="lookback" onchange="this.form.submit()">
+                    {% for opt in lookback_options %}
+                        <option value="{{ opt }}" {% if opt == lookback_years %}selected{% endif %}>{{ opt }} years</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="observe">
+                <label for="horizon">Projected forward</label>
+                <select name="horizon" id="horizon" onchange="this.form.submit()">
+                    {% for opt in horizon_options %}
+                        <option value="{{ opt }}" {% if opt == horizon_years %}selected{% endif %}>{{ opt }} year{{ opt|pluralize }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <p class="observe-meta num">
+                {{ sim.n_paths }} paths · {{ sim.days_of_history }} trading days of history
+            </p>
+        </form>
+
+        <!-- ============ OBSERVABLE CONDITIONS ============ -->
+        <section class="conditions num" aria-label="Headline statistics">
+            <div class="condition">
+                <p class="calib calib--bare">Median projection</p>
+                <p class="condition-value">{{ sim.median|floatformat:0 }}<span class="unit">{{ base_currency }}</span></p>
+                <p class="condition-sub {% if sim.median_return_pct >= 0 %}pos{% else %}neg{% endif %}">
+                    {% if sim.median_return_pct >= 0 %}+{% endif %}{{ sim.median_return_pct|floatformat:1 }}% from today
+                </p>
+            </div>
+            <div class="condition">
+                <p class="calib calib--bare">90% of futures land within</p>
+                <p class="condition-value">{{ sim.p5|floatformat:0 }} &ndash; {{ sim.p95|floatformat:0 }}<span class="unit">{{ base_currency }}</span></p>
+                <p class="condition-sub">{{ sim.p5_return_pct|floatformat:1 }}% to +{{ sim.p95_return_pct|floatformat:1 }}%</p>
+            </div>
+            <div class="condition">
+                <p class="calib calib--bare">Value at risk · 95%</p>
+                {% if sim.no_loss_at_95 %}
+                <p class="condition-value pos">No loss<span class="unit">at 95%</span></p>
+                <p class="condition-sub">Even the 5th-percentile path ends {{ sim.p5_return_pct|floatformat:1 }}% above today</p>
+                {% else %}
+                <p class="condition-value neg">{{ sim.var_95|floatformat:0 }}<span class="unit">{{ base_currency }}</span></p>
+                <p class="condition-sub">The channel cut into the terrain</p>
+                {% endif %}
+            </div>
+            <div class="condition">
+                <p class="calib calib--bare">Probability of loss</p>
+                <p class="condition-value prob-loss {% if sim.prob_loss > 0.5 %}neg{% else %}pos{% endif %}">{{ sim.prob_loss|floatformat:3 }}</p>
+                <p class="condition-sub">Chance of ending below today</p>
+            </div>
+        </section>
+
+        <!-- ============ PROBABILITY TERRAIN ============ -->
+        <section class="figure">
+            <p class="calib">Probability terrain · {{ sim.horizon_years }} year{{ sim.horizon_years|pluralize }} forward</p>
+            <p class="figure-note">
+                Value includes both the asset price and
+                {% if position.currency != base_currency %}
+                    {{ position.currency }}/{{ base_currency }} exchange-rate movement —
+                {% else %}
+                    currency effects —
+                {% endif %}
+                both drawn from the same historical days. Move the lens across the
+                terrain, or focus it and use arrow keys, to read exact values.
+            </p>
+            <div class="figure-stage" id="fan-stage">
+                <canvas id="fanCanvas" tabindex="0"
+                        aria-label="Fan chart of projected value. Median ends at {{ sim.median|floatformat:0 }} {{ base_currency }}; ninety percent of outcomes end between {{ sim.p5|floatformat:0 }} and {{ sim.p95|floatformat:0 }}."></canvas>
+            </div>
+            <div class="figure-key">
+                <span><i class="key-outer"></i> 5th–95th percentile</span>
+                <span><i class="key-inner"></i> 25th–75th percentile</span>
+                <span><i class="key-median"></i> Median path</span>
+            </div>
+        </section>
+
+        <!-- ============ DISTRIBUTION RIDGE ============ -->
+        <section class="figure">
+            <p class="calib">Where the futures came to rest</p>
+            <p class="figure-note">
+                The {{ sim.n_paths }} simulated endings after
+                {{ sim.horizon_years }} year{{ sim.horizon_years|pluralize }},
+                settled into a ridge. The engraved line marks today&rsquo;s value.
+            </p>
+            <div class="figure-stage figure-stage--short" id="hist-stage">
+                <canvas id="histCanvas" tabindex="0"
+                        aria-label="Distribution of simulated ending values."></canvas>
+            </div>
+        </section>
+
+        <!-- ============ METHOD ============ -->
+        <section class="method-note">
+            <p class="calib">Method &amp; limitations</p>
+            <p>
+                This projection resamples <strong>whole historical trading days</strong> at
+                random from the last {{ sim.lookback_years }} years. Because the asset price
+                and the exchange rate are drawn from the <em>same</em> day, their real
+                co-movement is preserved rather than assumed away.
+            </p>
+            <p>
+                It assumes the future resembles the sampled past. It cannot produce a
+                shock larger than any in that window, and a change in market regime would
+                make these estimates unreliable. The figures are a scenario-based risk
+                estimate, not a forecast.
+            </p>
+        </section>
+
+    {% endif %}
+
+    <!-- ============ FAULT LINE ============ -->
+    <section class="fault-line">
+        <form method="post" action="{% url 'home' %}" class="delete-position-form"
+              onsubmit="return confirm('Delete this position permanently? This cannot be undone.');">
+            {% csrf_token %}
+            <input type="hidden" name="position_id" value="{{ position.pk }}">
+            <button type="submit" class="fault-button">Remove this instrument from the architecture</button>
+        </form>
+    </section>
+
+</main>
+
+{% if sim.simulatable %}
+<script id="chart-data" type="application/json">{{ chart_data|safe }}</script>
+<script id="hist-data" type="application/json">{{ hist_data|safe }}</script>
+<script>
+/* ================================================================
+   PROBABILITY ARCHITECTURE — canvas terrain renderer
+   (single-instrument variant; same material system as the
+   portfolio terrain)
+   ================================================================ */
+(function () {
+"use strict";
+
+var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var d = JSON.parse(document.getElementById("chart-data").textContent);
+var h = JSON.parse(document.getElementById("hist-data").textContent);
+
+var INK = "#18202A", INK2 = "#66717E", INK3 = "#98A3B0";
+var ASSET = "106,175,255", NEG = "233,121,116", POS_C = "72,191,163", VAPOR = "170,180,195";
+var FONT = "600 10px Inter, sans-serif";
+
+function fmt(n, dec) {
+    return Number(n).toLocaleString("en-US", { maximumFractionDigits: dec == null ? 0 : dec });
+}
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+function niceTicks(min, max, count) {
+    var span = max - min, step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    var err = span / count / step;
+    step *= err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1;
+    var ticks = [], v = Math.ceil(min / step) * step;
+    for (; v <= max; v += step) ticks.push(v);
+    return ticks;
+}
+
+function makeLabel(stage, cls, title, value) {
+    var n = document.createElement("div");
+    n.className = "anchor-label " + cls;
+    n.innerHTML = title + "<strong>" + value + "</strong>";
+    stage.appendChild(n);
+    return n;
+}
+
+function makeReadout(stage) {
+    var n = document.createElement("div");
+    n.className = "lens-readout";
+    stage.appendChild(n);
+    return n;
+}
+
+/* ---------------- FAN TERRAIN ---------------- */
+(function fan() {
+    var stage = document.getElementById("fan-stage");
+    var canvas = document.getElementById("fanCanvas");
+    if (!stage || !canvas) return;
+    var ctx = canvas.getContext("2d");
+
+    var N = d.p50.length;
+    var yMin = Infinity, yMax = -Infinity;
+    [d.p5, d.p95].forEach(function (arr) {
+        arr.forEach(function (v) { if (v < yMin) yMin = v; if (v > yMax) yMax = v; });
+    });
+    (d.samples || []).forEach(function (s) {
+        s.forEach(function (v) { if (v < yMin) yMin = v; if (v > yMax) yMax = v; });
+    });
+    var pad = (yMax - yMin) * 0.07;
+    yMin -= pad; yMax += pad;
+
+    var padL = 74, padR = 148, padT = 26, padB = 40;
+    var W, H, dpr;
+    var lensIdx = -1;
+    var reveal = RM ? 1 : 0;
+    var hov = 0;
+
+    /* the terrain responds to attention — membranes densify under the eye */
+    function tweenHov(target) {
+        if (RM) { hov = target; draw(); return; }
+        var t0 = performance.now(), from = hov;
+        (function step(now) {
+            var p = Math.min((now - t0) / 380, 1);
+            hov = from + (target - from) * (1 - Math.pow(1 - p, 3));
+            draw();
+            if (p < 1) requestAnimationFrame(step);
+        })(t0);
+    }
+
+    var labels = {
+        median: makeLabel(stage, "al-median", "MEDIAN", ""),
+        high:   makeLabel(stage, "al-high", "95TH", ""),
+        low:    makeLabel(stage, "al-var", "5TH · VAR 95%", ""),
+        today:  makeLabel(stage, "al-today", "TODAY", "")
+    };
+    var readout = makeReadout(stage);
+
+    function xOf(i) { return padL + (i / (N - 1)) * (W - padL - padR); }
+    function yOf(v) { return padT + (1 - (v - yMin) / (yMax - yMin)) * (H - padT - padB); }
+
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = stage.clientWidth; H = stage.clientHeight;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw();
+        place();
+    }
+
+    function band(lo, hi, fill) {
+        ctx.beginPath();
+        for (var i = 0; i < N; i++) {
+            var x = xOf(i), y = yOf(hi[i]);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        for (var j = N - 1; j >= 0; j--) ctx.lineTo(xOf(j), yOf(lo[j]));
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+    }
+
+    function line(arr, style, width) {
+        ctx.beginPath();
+        for (var i = 0; i < N; i++) {
+            var x = xOf(i), y = yOf(arr[i]);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = style;
+        ctx.lineWidth = width;
+        ctx.stroke();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+
+        var ticks = niceTicks(yMin, yMax, 5);
+        ctx.font = FONT;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ticks.forEach(function (v) {
+            var y = yOf(v);
+            ctx.strokeStyle = "rgba(42,56,72,0.07)";
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR + 30, y); ctx.stroke();
+            ctx.fillStyle = INK3;
+            ctx.fillText(fmt(v), padL - 12, y);
+        });
+
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        for (var q = 0; q < N; q += 63) {
+            var x = xOf(q);
+            ctx.strokeStyle = "rgba(42,56,72,0.06)";
+            ctx.beginPath(); ctx.moveTo(x, H - padB); ctx.lineTo(x, H - padB + 6); ctx.stroke();
+            ctx.fillStyle = INK3;
+            ctx.fillText(q === 0 ? "TODAY" : "D" + q, x, H - padB + 10);
+        }
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, padL + (W - padL - padR + 40) * reveal, H);
+        ctx.clip();
+
+        (d.samples || []).forEach(function (s) {
+            ctx.beginPath();
+            for (var i = 0; i < s.length; i++) {
+                var x = xOf(i), y = yOf(s[i]);
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            var end = s[s.length - 1];
+            var sa = (0.10 + 0.06 * hov).toFixed(3);
+            ctx.strokeStyle = end >= h.start
+                ? "rgba(" + ASSET + "," + sa + ")"
+                : "rgba(" + NEG + "," + sa + ")";
+            ctx.lineWidth = 0.7 + 0.25 * hov;
+            ctx.stroke();
+        });
+
+        var g1 = ctx.createLinearGradient(0, padT, 0, H - padB);
+        g1.addColorStop(0, "rgba(" + ASSET + "," + (0.13 + 0.07 * hov).toFixed(3) + ")");
+        g1.addColorStop(1, "rgba(" + VAPOR + "," + (0.10 + 0.04 * hov).toFixed(3) + ")");
+        band(d.p5, d.p95, g1);
+        band(d.p25, d.p75, "rgba(" + ASSET + "," + (0.16 + 0.08 * hov).toFixed(3) + ")");
+
+        line(d.p5,  "rgba(188,71,64," + (0.35 + 0.20 * hov).toFixed(3) + ")", 1);
+        line(d.p95, "rgba(" + ASSET + "," + (0.50 + 0.25 * hov).toFixed(3) + ")", 1);
+
+        ctx.shadowColor = "rgba(255,255,255,0.9)";
+        ctx.shadowBlur = 5 + 5 * hov;
+        line(d.p50, INK, 2 + 0.7 * hov);
+        ctx.shadowBlur = 0;
+
+        ctx.beginPath();
+        ctx.arc(xOf(0), yOf(d.p50[0]), 4, 0, 7);
+        ctx.fillStyle = INK;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(xOf(0), yOf(d.p50[0]), 9, 0, 7);
+        ctx.strokeStyle = "rgba(42,56,72,0.25)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.restore();
+
+        if (lensIdx >= 0) {
+            var lx = xOf(lensIdx);
+            ctx.strokeStyle = "rgba(42,56,72,0.35)";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 4]);
+            ctx.beginPath(); ctx.moveTo(lx, padT); ctx.lineTo(lx, H - padB); ctx.stroke();
+            ctx.setLineDash([]);
+            [[d.p95, "rgba(" + ASSET + ",0.9)"], [d.p50, INK], [d.p5, "rgba(188,71,64,0.9)"]].forEach(function (pair) {
+                ctx.beginPath();
+                ctx.arc(lx, yOf(pair[0][lensIdx]), 3.5, 0, 7);
+                ctx.fillStyle = pair[1];
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(lx, yOf(pair[0][lensIdx]), 5.5, 0, 7);
+                ctx.strokeStyle = "rgba(255,255,255,0.9)";
+                ctx.stroke();
+            });
+        }
+    }
+
+    function place() {
+        var last = N - 1, xr = xOf(last) + 14;
+        function set(lab, y, val) {
+            lab.style.left = xr + "px";
+            lab.style.top = clamp(y, 16, H - 16) + "px";
+            lab.querySelector("strong").textContent = val;
+        }
+        set(labels.median, yOf(d.p50[last]), fmt(d.p50[last]) + " " + d.currency);
+        set(labels.high,   yOf(d.p95[last]) - 8, fmt(d.p95[last]));
+        set(labels.low,    yOf(d.p5[last]) + 10, fmt(d.p5[last]));
+        labels.today.style.left = (xOf(0) + 10) + "px";
+        labels.today.style.top = (yOf(d.p50[0]) - 24) + "px";
+        labels.today.querySelector("strong").textContent = fmt(d.p50[0]) + " " + d.currency;
+
+        if (Math.abs(yOf(d.p95[last]) - yOf(d.p50[last])) < 34) {
+            labels.high.style.top = (clamp(yOf(d.p50[last]), 16, H - 16) - 34) + "px";
+        }
+        if (Math.abs(yOf(d.p5[last]) - yOf(d.p50[last])) < 34) {
+            labels.low.style.top = (clamp(yOf(d.p50[last]), 16, H - 16) + 34) + "px";
+        }
+    }
+
+    function lensAt(idx, cx) {
+        lensIdx = idx;
+        draw();
+        if (idx < 0) { readout.classList.remove("visible"); return; }
+        readout.classList.add("visible");
+        readout.innerHTML =
+            '<p class="lr-title">' + (idx === 0 ? "TODAY" : "DAY " + idx) + "</p>" +
+            '<div class="lr-row"><span>95th</span>' + fmt(d.p95[idx]) + "</div>" +
+            '<div class="lr-row"><span>Median</span>' + fmt(d.p50[idx]) + "</div>" +
+            '<div class="lr-row"><span>5th</span>' + fmt(d.p5[idx]) + "</div>";
+        var rx = clamp((cx == null ? xOf(idx) : cx) + 18, 8, W - 200);
+        readout.style.left = rx + "px";
+        readout.style.top = (padT + 8) + "px";
+    }
+
+    canvas.addEventListener("pointermove", function (ev) {
+        var r = canvas.getBoundingClientRect();
+        var x = ev.clientX - r.left;
+        if (x < padL - 6 || x > W - padR + 20) { lensAt(-1); return; }
+        var idx = Math.round((x - padL) / (W - padL - padR) * (N - 1));
+        lensAt(clamp(idx, 0, N - 1), x);
+    });
+    canvas.addEventListener("pointerenter", function () { tweenHov(1); });
+    canvas.addEventListener("pointerleave", function () { lensAt(-1); tweenHov(0); });
+    canvas.addEventListener("keydown", function (ev) {
+        var cur = lensIdx < 0 ? 0 : lensIdx;
+        if (ev.key === "ArrowRight") { lensAt(clamp(cur + 5, 0, N - 1)); ev.preventDefault(); }
+        if (ev.key === "ArrowLeft")  { lensAt(clamp(cur - 5, 0, N - 1)); ev.preventDefault(); }
+        if (ev.key === "Escape") lensAt(-1);
+    });
+
+    if ("ResizeObserver" in window) new ResizeObserver(resize).observe(stage);
+    resize();
+
+    if (!RM) {
+        var t0 = performance.now();
+        (function grow(now) {
+            var p = clamp((now - t0) / 1400, 0, 1);
+            reveal = 1 - Math.pow(1 - p, 3);
+            draw();
+            if (p < 1) requestAnimationFrame(grow);
+        })(t0);
+    }
+})();
+
+/* ---------------- DISTRIBUTION RIDGE ---------------- */
+(function ridge() {
+    var stage = document.getElementById("hist-stage");
+    var canvas = document.getElementById("histCanvas");
+    if (!stage || !canvas) return;
+    var ctx = canvas.getContext("2d");
+
+    var counts = h.counts.slice();
+    for (var pass = 0; pass < 2; pass++) {
+        var sm = counts.map(function (v, i) {
+            var a = counts[i - 1] == null ? v : counts[i - 1];
+            var b = counts[i + 1] == null ? v : counts[i + 1];
+            return (a + v * 2 + b) / 4;
+        });
+        counts = sm;
+    }
+    var centers = [];
+    for (var i = 0; i < counts.length; i++) centers.push((h.edges[i] + h.edges[i + 1]) / 2);
+    var vMin = h.edges[0], vMax = h.edges[h.edges.length - 1];
+    var cMax = Math.max.apply(null, counts) * 1.12;
+
+    var padL = 20, padR = 20, padT = 34, padB = 40;
+    var W, H, dpr, lensIdx = -1;
+    var hov = 0;
+
+    /* the ridge deepens in color while inspected */
+    function tweenHov(target) {
+        if (RM) { hov = target; draw(); return; }
+        var t0 = performance.now(), from = hov;
+        (function step(now) {
+            var p = Math.min((now - t0) / 380, 1);
+            hov = from + (target - from) * (1 - Math.pow(1 - p, 3));
+            draw();
+            if (p < 1) requestAnimationFrame(step);
+        })(t0);
+    }
+
+    var todayLab = makeLabel(stage, "al-today", "TODAY", "");
+    var readout = makeReadout(stage);
+
+    function xOf(v) { return padL + (v - vMin) / (vMax - vMin) * (W - padL - padR); }
+    function yOf(cnt) { return padT + (1 - cnt / cMax) * (H - padT - padB); }
+
+    function ridgePath() {
+        ctx.beginPath();
+        ctx.moveTo(xOf(vMin), yOf(0));
+        for (var i = 0; i < centers.length; i++) {
+            var x = xOf(centers[i]), y = yOf(counts[i]);
+            if (i === 0) { ctx.lineTo(x, y); continue; }
+            var xp = xOf(centers[i - 1]), yp = yOf(counts[i - 1]);
+            var mx = (xp + x) / 2;
+            ctx.bezierCurveTo(mx, yp, mx, y, x, y);
+        }
+        ctx.lineTo(xOf(vMax), yOf(0));
+        ctx.closePath();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+
+        var base = yOf(0);
+        var xs = xOf(h.start);
+
+        ctx.strokeStyle = "rgba(42,56,72,0.2)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(padL, base); ctx.lineTo(W - padR, base); ctx.stroke();
+
+        ctx.save();
+        ctx.beginPath(); ctx.rect(padL, 0, Math.max(xs - padL, 0), H); ctx.clip();
+        ridgePath();
+        var gl = ctx.createLinearGradient(0, padT, 0, base);
+        gl.addColorStop(0, "rgba(233,121,116," + (0.34 + 0.12 * hov).toFixed(3) + ")");
+        gl.addColorStop(1, "rgba(233,121,116," + (0.05 + 0.04 * hov).toFixed(3) + ")");
+        ctx.fillStyle = gl; ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath(); ctx.rect(xs, 0, W - xs, H); ctx.clip();
+        ridgePath();
+        var gg = ctx.createLinearGradient(0, padT, 0, base);
+        gg.addColorStop(0, "rgba(72,191,163," + (0.36 + 0.12 * hov).toFixed(3) + ")");
+        gg.addColorStop(1, "rgba(72,191,163," + (0.05 + 0.04 * hov).toFixed(3) + ")");
+        ctx.fillStyle = gg; ctx.fill();
+        ctx.restore();
+
+        ridgePath();
+        ctx.strokeStyle = "rgba(42,56,72," + (0.28 + 0.14 * hov).toFixed(3) + ")";
+        ctx.lineWidth = 1.2 + 0.3 * hov;
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(42,56,72,0.5)";
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(xs, padT - 14); ctx.lineTo(xs, base); ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.font = FONT;
+        ctx.fillStyle = INK3;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        niceTicks(vMin, vMax, 6).forEach(function (v) {
+            ctx.fillText(fmt(v), xOf(v), base + 10);
+        });
+
+        if (lensIdx >= 0) {
+            var lx = xOf(centers[lensIdx]);
+            ctx.beginPath();
+            ctx.arc(lx, yOf(counts[lensIdx]), 3.5, 0, 7);
+            ctx.fillStyle = INK;
+            ctx.fill();
+        }
+
+        todayLab.style.left = clamp(xs + 8, 20, W - 90) + "px";
+        todayLab.style.top = (padT - 12) + "px";
+        todayLab.querySelector("strong").textContent = fmt(h.start) + " " + h.currency;
+    }
+
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = stage.clientWidth; H = stage.clientHeight;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw();
+    }
+
+    canvas.addEventListener("pointermove", function (ev) {
+        var r = canvas.getBoundingClientRect();
+        var x = ev.clientX - r.left;
+        var v = vMin + (x - padL) / (W - padL - padR) * (vMax - vMin);
+        var best = 0, bd = Infinity;
+        centers.forEach(function (cv, i) { var dd = Math.abs(cv - v); if (dd < bd) { bd = dd; best = i; } });
+        lensIdx = best;
+        draw();
+        readout.classList.add("visible");
+        readout.innerHTML =
+            '<p class="lr-title">&#8776; ' + fmt(centers[best]) + " " + h.currency + "</p>" +
+            '<div class="lr-row"><span>Paths</span>' + Math.round(h.counts[best]) + "</div>" +
+            '<div class="lr-row"><span>Vs today</span>' +
+                (centers[best] >= h.start ? "gain" : "loss") + "</div>";
+        readout.style.left = clamp(xOf(centers[best]) + 16, 8, W - 190) + "px";
+        readout.style.top = "12px";
+    });
+    canvas.addEventListener("pointerenter", function () { tweenHov(1); });
+    canvas.addEventListener("pointerleave", function () {
+        lensIdx = -1; readout.classList.remove("visible"); tweenHov(0); draw();
+    });
+
+    if ("ResizeObserver" in window) new ResizeObserver(resize).observe(stage);
+    resize();
+})();
+
+})();
+</script>
+{% endif %}
+
+<script>
+/* probability of loss reads as a percentage */
+(function () {
+    var pl = document.querySelector(".prob-loss");
+    if (!pl) return;
+    var v = parseFloat(pl.textContent);
+    if (isNaN(v)) return;
+    pl.innerHTML = (v * 100).toFixed(1) + '<span class="unit">%</span>';
+})();
+
+/* calibrated numerals: group thousands in-place */
+(function () {
+    var sel = ".condition-value, .fact strong, " +
+              ".holding-row:not(.holding-row--head) span";
+    document.querySelectorAll(sel).forEach(function (host) {
+        (function walk(node) {
+            if (node.nodeType === 3) {
+                node.data = node.data.replace(/\d{4,}(?:\.\d+)?/g, function (m) {
+                    var dec = m.indexOf(".") >= 0 ? m.split(".")[1].length : 0;
+                    return Number(m).toLocaleString("en-US",
+                        { minimumFractionDigits: dec, maximumFractionDigits: dec });
+                });
+            } else {
+                Array.prototype.slice.call(node.childNodes).forEach(walk);
+            }
+        })(host);
+    });
+})();
+</script>
+
+<script>
+/* background terrain — quiet on instrument pages */
+(function () {
+    var c = document.getElementById("terrain");
+    if (!c) return;
+    var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var ctx = c.getContext("2d");
+    var w, h, dpr;
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        c.width = window.innerWidth * dpr; c.height = window.innerHeight * dpr;
+        w = c.width; h = c.height;
+    }
+    window.addEventListener("resize", resize);
+    resize();
+    var t = 0, last = 0;
+    function draw(now) {
+        var dt = Math.min((now - last) / 1000, 0.1); last = now; t += dt * 0.3;
+        ctx.clearRect(0, 0, w, h);
+        for (var i = 0; i < 16; i++) {
+            var base = h * (0.55 + i * 0.032);
+            ctx.beginPath();
+            var step = 10 * dpr;
+            for (var px = -step; px <= w + step; px += step) {
+                var x = px / w;
+                var y = base
+                    - Math.exp(-Math.pow((x - 0.78) / 0.24, 2)) * h * 0.1 * (1 - i / 20)
+                    - Math.sin(x * 8 + t * 0.3 + i * 0.3) * h * 0.008;
+                px <= 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+            }
+            ctx.strokeStyle = "rgba(42,56,72," + (0.028 + 0.02 * Math.exp(-i / 6)).toFixed(3) + ")";
+            ctx.lineWidth = dpr * 0.75;
+            ctx.stroke();
+        }
+        if (!RM) requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+})();
+</script>
+
+</body>
+</html>

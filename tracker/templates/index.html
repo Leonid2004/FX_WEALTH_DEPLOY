@@ -1,0 +1,1075 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Overview · FX Wealth Tracker</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200..800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'mainstyle.css' %}">
+</head>
+
+<body data-seed="{{ total_net_worth|stringformat:".2f" }}"
+      data-drift="{% if port_total_money is not None and port_total_money >= 0 %}up{% else %}down{% endif %}">
+
+<canvas id="terrain" aria-hidden="true"></canvas>
+<div class="summit-light" aria-hidden="true"></div>
+
+<!-- ============ WAYFINDING ============ -->
+<header class="wayfinding">
+    <a href="{% url 'home' %}" class="way-logo">
+        FX&thinsp;/&thinsp;WEALTH
+        <small>LIQUID&nbsp;CAPITAL</small>
+    </a>
+
+    <nav class="waypoints os-item" style="--osd: 940ms;" aria-label="Regions">
+        <a class="waypoint" href="#overview"><i>01</i> OVERVIEW</a>
+        <a class="waypoint" href="#attribution"><i>02</i> ATTRIBUTION</a>
+        <a class="waypoint" href="#positions"><i>03</i> POSITIONS</a>
+        <a class="waypoint" href="#simulation"><i>04</i> SIMULATION</a>
+    </nav>
+
+    <div class="way-actions">
+        <a href="{% url 'addpos' %}" class="way-action way-action--intake">+ INTAKE</a>
+        <form method="post" action="{% url 'logout' %}" class="logout-form">
+            {% csrf_token %}
+            <button type="submit" class="way-action way-action--exit">EXIT</button>
+        </form>
+    </div>
+</header>
+
+<main class="landscape">
+
+    <!-- ============ 01 · THE WEALTH ELEVATION ============ -->
+    <section id="overview" class="region elevation" aria-label="Overview">
+
+        <div class="summit" id="summit">
+            <p class="calib">Total net worth · {{ base_currency }}</p>
+
+            <h1 class="summit-value num" id="summit-value"
+                data-value="{{ total_net_worth|stringformat:".2f" }}">
+                <span class="sv-num">{{ total_net_worth|floatformat:2 }}</span><span class="unit">{{ base_currency }}</span>
+            </h1>
+
+            <p class="summit-exact num os-item" style="--osd: 500ms;">
+                Valued at today&rsquo;s ECB reference rates
+            </p>
+
+            {% if port_total_money is not None %}
+                <p class="summit-drift num os-item {% if port_total_money >= 0 %}pos{% else %}neg{% endif %}" style="--osd: 620ms;">
+                    {% if port_total_money >= 0 %}+{% endif %}{{ port_total_money|floatformat:2 }} {{ base_currency }}
+                    · {{ port_total_pct|floatformat:2 }}% · SINCE ACQUISITION
+                </p>
+            {% endif %}
+
+            {% if port_asset_pct is not None %}
+                <p class="summit-whisper num os-item" id="ghost-whisper" style="--osd: 740ms;" hidden>
+                    Hedged to {{ base_currency }}, this book would show
+                    {% if port_asset_pct >= 0 %}+{% endif %}{{ port_asset_pct|floatformat:2 }}%
+                </p>
+            {% endif %}
+        </div>
+
+        <!-- the engraved seal a guilloché fingerprint of the book.
+             Hover turns the mechanism; click opens its inscription. -->
+        <div class="seal-station os-item" id="seal-station" style="--osd: 700ms;" hidden>
+            <button type="button" class="seal-button" id="seal-toggle"
+                    aria-expanded="false" aria-controls="seal-note">
+                <span class="seal-mount" id="seal-hero"></span>
+                <span class="calib calib--bare seal-caption">Seal · Structure follows holdings</span>
+            </button>
+            <div class="seal-note" id="seal-note" role="note" aria-label="About the seal" hidden>
+                <p class="calib calib--bare">The seal</p>
+                <p>
+                    A guilloché engraving generated from this portfolio, in the
+                    tradition of banknote engine-turning. Each petal is one holding;
+                    each ring a currency, its thickness that currency&rsquo;s share of
+                    the book. The double-edged ring is your base currency, and the
+                    whole structure leans with total return.
+                </p>
+                <p>No two portfolios produce the same seal. As the book changes, so does its mark.</p>
+            </div>
+        </div>
+
+        <p class="calib-point cp-1 os-item" style="--osd: 700ms;">Observer<strong>{{ user.username }}</strong></p>
+        <p class="calib-point cp-2 os-item" style="--osd: 780ms;">Base currency<strong>{{ user.portfolio.base_currency }}</strong></p>
+        <p class="calib-point cp-3 os-item" style="--osd: 860ms;">Instruments held<strong>{{ positions|length }}</strong></p>
+
+        {% if has_missing_values %}
+            <aside class="channel-note os-item" style="--osd: 1020ms;">
+                <p class="calib">Incomplete surface</p>
+                Some positions could not be priced or converted, so the elevation is
+                understated. Check tickers and FX rate coverage.
+            </aside>
+        {% endif %}
+
+        <div class="plumb os-item" style="--osd: 1120ms;" aria-hidden="true"></div>
+    </section>
+
+    {% if positions %}
+
+    <!-- ============ 02 · ATTRIBUTION AS MATERIAL INTERFERENCE ============ -->
+    {% if port_asset_pct is not None %}
+    <section id="attribution" class="region region--first" aria-label="Attribution"
+             data-asset-money="{{ port_asset_money|stringformat:".2f" }}"
+             data-asset-pct="{{ port_asset_pct|stringformat:".4f" }}"
+             data-currency-money="{{ port_currency_money|stringformat:".2f" }}"
+             data-currency-pct="{{ port_currency_pct|stringformat:".4f" }}"
+             data-interaction-money="{{ port_interaction_money|stringformat:".2f" }}"
+             data-interaction-pct="{{ port_interaction_pct|stringformat:".4f" }}"
+             data-total-pct="{{ port_total_pct|stringformat:".4f" }}"
+             data-base="{{ base_currency }}">
+
+        <header class="region-head">
+            <p class="calib">02 · Attribution</p>
+            <h2>Two forces act on the same material.</h2>
+            <p>
+                The blue structural current shows what your assets did in their own markets. The lavender current shows what their currencies did against {{ base_currency }}. Where the two overlap, cyan interference appears. It represents the interaction, an outcome rather than a category.
+
+            </p>
+        </header>
+
+        <div class="confluence" id="confluence"></div>
+
+        <div class="confluence-total num">
+            <p class="calib">Resolved total</p>
+            <strong class="{% if port_total_money >= 0 %}pos{% else %}neg{% endif %}">
+                {% if port_total_money >= 0 %}+{% endif %}{{ port_total_pct|floatformat:2 }}%
+            </strong>
+            <span>{% if port_total_money >= 0 %}+{% endif %}{{ port_total_money|floatformat:2 }} {{ base_currency }} since acquisition</span>
+        </div>
+
+        <!-- the ghost benchmark the hedged counterfactual. JS reconciles and
+             composes the drag sentence; hidden until the numbers prove consistent. -->
+        <div class="ghost-benchmark num" id="ghost-benchmark" hidden>
+            <p class="calib calib--ghost">&middot; Fully hedged</p>
+            <strong class="ghost-value">{% if port_asset_pct >= 0 %}+{% endif %}{{ port_asset_pct|floatformat:2 }}%</strong>
+            <span class="ghost-caption">the same book, currency risk removed</span>
+            <span class="ghost-drag" aria-live="off"></span>
+            <span class="ghost-note">The hedged figure is a counterfactual, the same holdings with
+            exchange rates frozen at acquisition, ignoring hedging costs. It isolates what currency
+            exposure added or removed; it is not an achievable trading result.</span>
+        </div>
+
+        <header class="region-head" style="padding-top: 9vh;">
+            <p class="calib">Currency pressure</p>
+            <h2 style="font-size: clamp(20px, 2.2vw, 28px);">Exposure occupies the surface.</h2>
+        </header>
+
+        <div class="confluence" id="pressure" aria-hidden="true"></div>
+    </section>
+    {% endif %}
+
+    <!-- ============ 03 · POSITIONS AS RIBBONS ============ -->
+    <section id="positions" class="region" aria-label="Positions">
+
+        <header class="region-head">
+            <p class="calib">03 · Positions</p>
+            <h2>The portfolio, given form.</h2>
+            <p>
+                Each holding is a ribbon branching from the wealth structure.
+                Width is size, trajectory is return, internal light is its currency.
+                Rest on a ribbon to resolve its values; open a stratum below for
+                the precise ledger.
+            </p>
+        </header>
+
+        <div class="ribbon-field" id="ribbon-field" aria-hidden="true"></div>
+
+        <!-- the unfolded analytical surface -->
+        <div class="strata" role="list">
+            {% for position in positions %}
+            <details class="stratum" role="listitem" data-idx="{{ forloop.counter0 }}">
+                <summary>
+                    <span class="stratum-index num">{{ forloop.counter|stringformat:"02d" }}</span>
+
+                    <span class="stratum-id">
+                        <h3>
+                            {% if position.ticker %}{{ position.ticker }}
+                            {% elif position.description %}{{ position.description|truncatechars:32 }}
+                            {% else %}{{ position.get_asset_type_display }}{% endif %}
+                        </h3>
+                        <span class="ccy" data-ccy="{{ position.currency }}"><i aria-hidden="true"></i>{{ position.currency }}</span>
+                    </span>
+
+                    <span class="stratum-kind">
+                        {{ position.get_asset_type_display }}{% if position.company_name %} · {{ position.company_name }}{% endif %}
+                    </span>
+
+                    <span class="stratum-readout num">
+                        {% if position.value_base is not None %}
+                            <span class="stratum-value">{{ position.value_base|floatformat:2 }}<small>{{ base_currency }}</small></span>
+                        {% else %}
+                            <span class="stratum-missing">UNPRICED</span>
+                        {% endif %}
+                        {% if position.r_base is not None %}
+                            <span class="stratum-return {% if position.r_base >= 0 %}pos{% else %}neg{% endif %}">
+                                {% if position.r_base >= 0 %}+{% endif %}{{ position.r_base|floatformat:2 }}%
+                            </span>
+                        {% endif %}
+                        <span class="fold-mark" aria-hidden="true"></span>
+                    </span>
+                </summary>
+
+                <div class="cavity">
+                    <div class="cavity-grid">
+
+                        {% if position.r_base is not None %}
+                        <div class="forces">
+                            <p class="calib">Forces acting on this position · since {{ position.acquisition_date|date:"M Y" }}</p>
+
+                            <div class="force-row">
+                                <span class="force-name f-asset">Asset</span>
+                                <span class="force-track"><span class="force-bar {% if position.asset_effect_money >= 0 %}up{% else %}down{% endif %}"
+                                    style="--f-light: var(--asset);" data-money="{{ position.asset_effect_money|stringformat:".2f" }}"></span></span>
+                                <span class="force-value num {% if position.asset_effect_money >= 0 %}pos{% else %}neg{% endif %}">
+                                    {% if position.asset_effect_money >= 0 %}+{% endif %}{{ position.asset_effect_money|floatformat:2 }} {{ base_currency }}
+                                    <small>{{ position.r_local|floatformat:2 }}%</small>
+                                </span>
+                            </div>
+
+                            <div class="force-row">
+                                <span class="force-name f-currency">Currency</span>
+                                <span class="force-track"><span class="force-bar {% if position.currency_effect_money >= 0 %}up{% else %}down{% endif %}"
+                                    style="--f-light: var(--currency);" data-money="{{ position.currency_effect_money|stringformat:".2f" }}"></span></span>
+                                <span class="force-value num {% if position.currency_effect_money >= 0 %}pos{% else %}neg{% endif %}">
+                                    {% if position.currency_effect_money >= 0 %}+{% endif %}{{ position.currency_effect_money|floatformat:2 }} {{ base_currency }}
+                                    <small>{{ position.r_fx|floatformat:2 }}%</small>
+                                </span>
+                            </div>
+
+                            <div class="force-row">
+                                <span class="force-name f-interaction">Interaction</span>
+                                <span class="force-track"><span class="force-bar {% if position.interaction_effect_money >= 0 %}up{% else %}down{% endif %}"
+                                    style="--f-light: var(--interaction);" data-money="{{ position.interaction_effect_money|stringformat:".2f" }}"></span></span>
+                                <span class="force-value num {% if position.interaction_effect_money >= 0 %}pos{% else %}neg{% endif %}">
+                                    {% if position.interaction_effect_money >= 0 %}+{% endif %}{{ position.interaction_effect_money|floatformat:2 }} {{ base_currency }}
+                                    <small>{{ position.r_interaction|floatformat:2 }}%</small>
+                                </span>
+                            </div>
+
+                            <div class="force-row total">
+                                <span class="force-name f-total">Resolved</span>
+                                <span class="force-track"><span class="force-bar {% if position.total_effect_money >= 0 %}up{% else %}down{% endif %}"
+                                    style="--f-light: {% if position.total_effect_money >= 0 %}var(--positive){% else %}var(--negative){% endif %};"
+                                    data-money="{{ position.total_effect_money|stringformat:".2f" }}"></span></span>
+                                <span class="force-value num {% if position.total_effect_money >= 0 %}pos{% else %}neg{% endif %}">
+                                    {% if position.total_effect_money >= 0 %}+{% endif %}{{ position.total_effect_money|floatformat:2 }} {{ base_currency }}
+                                    <small>{{ position.r_base|floatformat:2 }}% in {{ base_currency }}</small>
+                                </span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="forces">
+                            <p class="calib">Forces acting on this position</p>
+                            <p style="margin:0; color: var(--ink-2); font-size: 13px; line-height: 1.7; max-width: 380px;">
+                                No return decomposition — this holding is valued manually or
+                                lacks sufficient price history for attribution.
+                            </p>
+                        </div>
+                        {% endif %}
+
+                        <div class="ledger">
+                            <p class="calib">Ledger</p>
+
+                            {% if position.description and position.ticker %}
+                            <div class="ledger-row"><span>Description</span><strong>{{ position.description|truncatechars:44 }}</strong></div>
+                            {% endif %}
+                            {% if position.ticker %}
+                            <div class="ledger-row"><span>Ticker</span><strong>{{ position.ticker }}</strong></div>
+                            {% endif %}
+                            {% if position.quantity %}
+                            <div class="ledger-row"><span>Quantity</span><strong>{{ position.quantity }}</strong></div>
+                            {% endif %}
+                            <div class="ledger-row"><span>Acquisition value</span><strong>{{ position.acquisition_value }} {{ position.currency }}</strong></div>
+                            <div class="ledger-row"><span>Acquisition date</span>
+                                <strong>{% if position.acquisition_date %}{{ position.acquisition_date|date:"M d, Y" }}{% else %}Not specified{% endif %}</strong></div>
+                            {% if position.manual_current_value is not None %}
+                            <div class="ledger-row"><span>Current value (manual)</span><strong>{{ position.manual_current_value }} {{ position.currency }}</strong></div>
+                            {% endif %}
+                            <div class="ledger-row"><span>Current value in {{ position.currency }}</span>
+                                <strong>{% if position.local %}{{ position.local|floatformat:2 }}{% else %}Not specified{% endif %}</strong></div>
+                            {% if position.value_base is not None %}
+                            <div class="ledger-row"><span>Current value in {{ base_currency }}</span><strong>{{ position.value_base|floatformat:2 }} {{ base_currency }}</strong></div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="cavity-actions">
+                        <a class="lens-link" href="{% url 'position_detail' position.pk %}">Open instrument</a>
+                    </div>
+                </div>
+            </details>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- ============ 04 · SIMULATION THRESHOLD ============ -->
+    <section id="simulation" class="region" aria-label="Simulation">
+        <a href="{% url 'portfolio_projection' %}" class="threshold">
+            <svg class="threshold-fan" viewBox="0 0 640 360" fill="none" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <path d="M0 180 C 180 180, 260 40, 640 8"   stroke="#6AAFFF" stroke-opacity="0.35" stroke-width="1"/>
+                <path d="M0 180 C 180 180, 260 90, 640 70"  stroke="#6AAFFF" stroke-opacity="0.3"  stroke-width="1"/>
+                <path d="M0 180 C 180 180, 260 130, 640 128" stroke="#6AAFFF" stroke-opacity="0.28" stroke-width="1"/>
+                <path d="M0 180 C 180 180, 260 175, 640 182" stroke="#18202A" stroke-opacity="0.55" stroke-width="1.8"/>
+                <path d="M0 180 C 180 180, 260 215, 640 238" stroke="#A68CF0" stroke-opacity="0.3"  stroke-width="1"/>
+                <path d="M0 180 C 180 180, 260 265, 640 300" stroke="#E97974" stroke-opacity="0.32" stroke-width="1"/>
+                <path d="M0 180 C 180 180, 260 305, 640 352" stroke="#E97974" stroke-opacity="0.22" stroke-width="1"/>
+                <path d="M0 180 C 180 180, 260 40, 640 8 L 640 352 C 260 305, 180 180, 0 180 Z" fill="url(#fanfill)"/>
+                <defs>
+                    <linearGradient id="fanfill" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0" stop-color="#6AAFFF" stop-opacity="0"/>
+                        <stop offset="1" stop-color="#6AAFFF" stop-opacity="0.10"/>
+                    </linearGradient>
+                </defs>
+            </svg>
+
+            <p class="calib">04 · Simulation</p>
+            <h2>Open the probability terrain.</h2>
+            <p>
+                Every holding and every exchange rate resampled from the same
+                historical days. Correlated crashes stay correlated. See the range
+                of futures your book could reach, and how much it could lose.
+            </p>
+            <span class="lens-link">Enter the simulation</span>
+            <span class="threshold-meta num">10,000 correlated paths · ECB reference rates</span>
+        </a>
+    </section>
+
+    {% else %}
+
+    <!-- ============ EMPTY FIELD ============ -->
+    <section id="positions" class="region" aria-label="Positions">
+        <div class="empty-field">
+            <p class="calib">03 · Positions</p>
+            <h3>The field is empty.</h3>
+            <p>
+                Nothing shapes the surface yet. Add your first holding and the
+                architecture will begin to form around it — across currencies
+                and asset classes, valued at daily ECB reference rates.
+            </p>
+            <a href="{% url 'addpos' %}" class="lens-link">Introduce your first position</a>
+        </div>
+    </section>
+
+    {% endif %}
+
+    <footer class="region colophon">
+        <span>FX / WEALTH — LIQUID CAPITAL</span>
+        <span>ECB REFERENCE RATES · BASE {{ base_currency }}</span>
+        <span class="num">{{ positions|length }} INSTRUMENTS UNDER OBSERVATION</span>
+    </footer>
+
+</main>
+
+{% if positions %}
+<script id="positions-data" type="application/json">
+[
+{% for position in positions %}
+  {
+    "url": "{% url 'position_detail' position.pk %}",
+    "label": "{% if position.ticker %}{{ position.ticker|escapejs }}{% elif position.description %}{{ position.description|truncatechars:22|escapejs }}{% else %}{{ position.get_asset_type_display|escapejs }}{% endif %}",
+    "currency": "{{ position.currency|escapejs }}",
+    "value": {% if position.value_base is not None %}{{ position.value_base|stringformat:".2f" }}{% else %}null{% endif %},
+    "r": {% if position.r_base is not None %}{{ position.r_base|stringformat:".4f" }}{% else %}null{% endif %},
+    "rLocal": {% if position.r_local is not None %}{{ position.r_local|stringformat:".4f" }}{% else %}null{% endif %},
+    "rFx": {% if position.r_fx is not None %}{{ position.r_fx|stringformat:".4f" }}{% else %}null{% endif %}
+  }{% if not forloop.last %},{% endif %}
+{% endfor %}
+]
+</script>
+
+{% comment %}
+Seal inputs. Values via stringformat (never locale-formatted). The loop can
+leave a trailing comma when the last position is unvalued - the JS parser
+strips any comma that directly precedes ] or } before JSON.parse.
+{% endcomment %}
+<script id="seal-data" type="application/json">
+{
+  "base": "{{ base_currency|escapejs }}",
+  "ret": {% if port_total_pct is not None %}{{ port_total_pct|stringformat:".4f" }}{% else %}null{% endif %},
+  "positions": [
+{% for position in positions %}{% if position.value_base is not None %}    {"v": {{ position.value_base|stringformat:".2f" }}, "c": "{{ position.currency|escapejs }}"},
+{% endif %}{% endfor %}  ]
+}
+</script>
+{% endif %}
+
+<script>
+/* ================================================================
+   LIQUID ARCHITECTURE - landscape engine
+   Nothing here moves for decoration. Geometry = data.
+   ================================================================ */
+(function () {
+"use strict";
+
+var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var INK = "#18202A";
+var CCY_LIGHT = { CHF:"#8FA3B5", USD:"#6AAFFF", EUR:"#A68CF0", GBP:"#E9A074", JPY:"#65D9E7" };
+var CCY_INK   = { CHF:"#5A6E80", USD:"#2160BE", EUR:"#6847CC", GBP:"#B65E28", JPY:"#0C7E94" };
+function ccyLight(c){ return CCY_LIGHT[c] || "#48BFA3"; }
+function ccyInk(c){ return CCY_INK[c] || "#14795F"; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function fmt(n, d){ return Number(n).toLocaleString("en-US", {minimumFractionDigits: d==null?2:d, maximumFractionDigits: d==null?2:d}); }
+var SVGNS = "http://www.w3.org/2000/svg";
+function el(name, attrs, parent){
+    var node = document.createElementNS(SVGNS, name);
+    for (var k in attrs) node.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(node);
+    return node;
+}
+
+/* ================================================================
+   FEATURE · OPENING SEQUENCE - the document composes itself.
+   Once per browser session; any input fast-forwards to final state;
+   reduced-motion never plays. All reveal is opacity/transform - no CLS.
+   ================================================================ */
+var OS = { active: false, done: true, t0: 0, hooks: [] };
+OS.onFinish = function (fn) { if (OS.done) return; OS.hooks.push(fn); };
+(function opening() {
+    var played = false;
+    try { played = sessionStorage.getItem("c1_opening_played") === "1"; } catch (e) {}
+    try { sessionStorage.setItem("c1_opening_played", "1"); } catch (e) {}
+    if (RM || played) return;
+
+    OS.active = true; OS.done = false; OS.t0 = performance.now();
+    document.body.classList.add("arriving");
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+        document.body.classList.add("os-run");
+    }); });
+
+    function finish() {
+        if (OS.done) return;
+        OS.done = true; OS.active = false;
+        document.body.classList.remove("arriving", "os-run");
+        OS.hooks.forEach(function (fn) { try { fn(); } catch (e) {} });
+        OS.hooks = [];
+        evs.forEach(function (ev) { window.removeEventListener(ev, finish); });
+    }
+    var evs = ["wheel", "pointerdown", "keydown", "touchstart"];
+    evs.forEach(function (ev) { window.addEventListener(ev, finish, { passive: true }); });
+    setTimeout(finish, 1750);
+})();
+
+/* ---------- calibrated numerals: group thousands in-place ---------- */
+(function groupDigits() {
+    var sel = ".stratum-value, .force-value, .summit-exact, .summit-drift, " +
+              ".confluence-total strong, .confluence-total span";
+    document.querySelectorAll(sel).forEach(function walkHost(host) {
+        (function walk(node) {
+            if (node.nodeType === 3) {
+                node.data = node.data.replace(/\d{4,}(?:\.\d+)?/g, function (m) {
+                    var dec = m.indexOf(".") >= 0 ? m.split(".")[1].length : 0;
+                    return Number(m).toLocaleString("en-US",
+                        { minimumFractionDigits: dec, maximumFractionDigits: dec });
+                });
+            } else {
+                Array.prototype.slice.call(node.childNodes).forEach(walk);
+            }
+        })(host);
+    });
+})();
+
+/* ---------- currency light dots on strata ---------- */
+document.querySelectorAll(".ccy[data-ccy]").forEach(function (n) {
+    n.style.setProperty("--ccy-light", ccyLight(n.dataset.ccy));
+});
+
+/* ---------- 01 · terrain: the landscape itself ---------- */
+(function terrain() {
+    var c = document.getElementById("terrain");
+    if (!c) return;
+    var ctx = c.getContext("2d");
+    var w, h, dpr, peakX = 0.30, crestY = 0.30;
+
+    var seedStr = document.body.dataset.seed || "37";
+    var seed = 2166136261;
+    for (var i = 0; i < seedStr.length; i++) { seed = (seed ^ seedStr.charCodeAt(i)) * 16777619 >>> 0; }
+    function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+    var harm = [];
+    for (var k = 0; k < 5; k++) harm.push({ a: 0.4 + rnd() * 0.6, p: rnd() * 6.283, f: 1.1 + k * 0.83 + rnd() * 0.4 });
+
+    function locate() {
+        var s = document.getElementById("summit");
+        if (!s) return;
+        var r = s.getBoundingClientRect();
+        var scroll = window.scrollY || 0;
+        peakX = clamp((r.left + r.width * 0.42) / window.innerWidth, 0.14, 0.7);
+        crestY = clamp((r.bottom + scroll * 0 + 26) / window.innerHeight, 0.2, 0.66);
+    }
+
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        c.width = window.innerWidth * dpr;
+        c.height = window.innerHeight * dpr;
+        w = c.width; h = c.height;
+        locate();
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    function elev(x, t, i) {
+        var ridge = Math.exp(-Math.pow((x - peakX) / 0.17, 2));
+        var n = 0;
+        for (var j = 0; j < harm.length; j++) {
+            var hh = harm[j];
+            n += Math.sin(x * 6.283 * hh.f + hh.p + t * (0.16 + j * 0.037) + i * 0.11) * hh.a / (j + 2);
+        }
+        return ridge + n * 0.16;
+    }
+
+    var t = 0, last = 0;
+    function draw(now) {
+        var dt = Math.min((now - last) / 1000, 0.1); last = now; t += dt * 0.35;
+        ctx.clearRect(0, 0, w, h);
+
+        var lines = 30;
+        var top = crestY * h;
+        var span = h * 0.66;
+        var amp0 = h * 0.16;
+
+        /* during the opening sequence the contours draw themselves in,
+           staggered back-to-front; afterwards rev is always 1 */
+        var rev = 1;
+        if (OS.active && !OS.done) rev = clamp((now - OS.t0 - 100) / 700, 0, 1);
+
+        for (var i = 0; i < lines; i++) {
+            var lr = (OS.active && !OS.done)
+                ? clamp(rev * 1.6 - ((lines - 1 - i) / lines) * 0.6, 0, 1)
+                : 1;
+            if (lr <= 0) continue;
+            var base = top + (i / (lines - 1)) * span;
+            var decay = 1 - (i / lines) * 0.72;
+            var alpha = (0.030 + 0.055 * Math.exp(-Math.pow((i - 3) / 7, 2))) * Math.min(1, lr * 1.5);
+            ctx.beginPath();
+            var step = 9 * dpr;
+            var wEnd = (w + step) * lr;
+            for (var px = -step; px <= wEnd; px += step) {
+                var x = px / w;
+                var y = base - elev(x, t, i) * amp0 * decay;
+                if (px <= 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+            }
+            ctx.strokeStyle = "rgba(42,56,72," + alpha.toFixed(3) + ")";
+            ctx.lineWidth = dpr * (i === 2 ? 1.3 : 0.75);
+            ctx.stroke();
+        }
+
+        if (!RM) requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+})();
+
+/* ---------- summit count-up, compact ---------- */
+(function summit() {
+    var host = document.getElementById("summit-value");
+    if (!host) return;
+    var out = host.querySelector(".sv-num");
+    var target = parseFloat(host.dataset.value);
+    if (isNaN(target)) { out.textContent = "—"; return; }
+
+
+    if (RM || !OS.active) { out.textContent = fmt(target, 2); return; }
+
+    var DELAY = 400, DUR = 900, snapped = false;
+    OS.onFinish(function () { snapped = true; out.textContent = fmt(target, 2); });
+    out.textContent = fmt(0, 2);
+    (function tick(now) {
+        if (snapped) return;
+        var p = clamp((now - OS.t0 - DELAY) / DUR, 0, 1);
+        var e = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);   /* easeOutExpo */
+        out.textContent = fmt(target * e, 2);
+        if (p < 1) requestAnimationFrame(tick); else out.textContent = fmt(target, 2);
+    })(performance.now());
+})();
+
+/* ---------- wayfinding scroll-spy ---------- */
+(function spy() {
+    var points = Array.prototype.slice.call(document.querySelectorAll(".waypoint"));
+    if (!points.length || !("IntersectionObserver" in window)) return;
+    var map = {};
+    points.forEach(function (p) { map[p.getAttribute("href").slice(1)] = p; });
+    var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+            if (en.isIntersecting && map[en.target.id]) {
+                points.forEach(function (p) { p.classList.remove("active"); });
+                map[en.target.id].classList.add("active");
+            }
+        });
+    }, { rootMargin: "-38% 0px -52% 0px" });
+    Object.keys(map).forEach(function (id) {
+        var s = document.getElementById(id);
+        if (s) io.observe(s);
+    });
+})();
+
+/* ---------- positions data ---------- */
+var POS = [];
+var dataNode = document.getElementById("positions-data");
+if (dataNode) { try { POS = JSON.parse(dataNode.textContent); } catch (e) { POS = []; } }
+
+/* ---------- 02 · ribbons ---------- */
+(function ribbons() {
+    var host = document.getElementById("ribbon-field");
+    if (!host || !POS.length) return;
+
+    var n = POS.length;
+    var W = 1400;
+    var laneH = Math.max(64, Math.min(96, 560 / n + 40));
+    var H = 130 + n * laneH;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, class: "ribbons", role: "img",
+                          "aria-label": "Portfolio positions drawn as ribbons" }, null);
+    var defs = el("defs", {}, svg);
+
+    var maxV = 0, total = 0;
+    POS.forEach(function (p) { var v = p.value || 0; total += v; if (v > maxV) maxV = v; });
+    if (maxV <= 0) maxV = 1;
+
+    var trunkY = H * 0.42;
+
+    POS.forEach(function (p, i) {
+        var v = p.value || 0;
+        var share = v / maxV;
+        var wRib = 9 + Math.sqrt(share) * 62;
+        var r = (p.r == null) ? 0 : clamp(p.r, -60, 60);
+        var turb = Math.min(Math.abs(p.r == null ? 0 : p.r), 35) / 35;
+        var light = ccyLight(p.currency);
+
+        var y0 = trunkY + (i - (n - 1) / 2) * 10;
+        var yLane = 96 + i * laneH;
+        var drift = -clamp(r, -34, 34) * 1.35;
+
+        /* centerline sample points */
+        var pts = [];
+        var S = 46;
+        for (var s = 0; s <= S; s++) {
+            var t = s / S;
+            var ease = t * t * (3 - 2 * t);
+            var x = 30 + t * (W - 230);
+            var y = y0 + (yLane - y0) * ease
+                  + drift * (t < 0.5 ? 0 : (t - 0.5) * 2 * (t - 0.5) * 2)
+                  + Math.sin(t * 19 + i * 2.1) * turb * 9 * t
+                  + Math.sin(t * 7 + i) * 3 * t;
+            pts.push([x, y]);
+        }
+
+        /* width profile: thin at trunk, full past midfield */
+        function wAt(t) { return wRib * (0.18 + 0.82 * Math.min(1, t * 1.9)); }
+
+        var top = [], bot = [];
+        pts.forEach(function (pt, idx) {
+            var t = idx / S, hw = wAt(t) / 2;
+            top.push(pt[0].toFixed(1) + "," + (pt[1] - hw).toFixed(1));
+            bot.push(pt[0].toFixed(1) + "," + (pt[1] + hw).toFixed(1));
+        });
+        var body = "M" + top.join(" L") + " L" + bot.reverse().join(" L") + " Z";
+        var center = "M" + pts.map(function (pt) { return pt[0].toFixed(1) + "," + pt[1].toFixed(1); }).join(" L");
+
+        var gid = "rg" + i;
+        var grad = el("linearGradient", { id: gid, x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+        el("stop", { offset: "0",   "stop-color": light, "stop-opacity": 0.08 }, grad);
+        el("stop", { offset: "0.55","stop-color": light, "stop-opacity": 0.26 }, grad);
+        el("stop", { offset: "1",   "stop-color": light, "stop-opacity": 0.38 }, grad);
+
+        el("path", { id: "rc" + i, d: center, fill: "none" }, defs);
+
+        var a = el("a", { href: p.url, class: "ribbon", tabindex: 0 }, svg);
+        a.setAttribute("aria-label", p.label + ", " + p.currency
+            + (p.value != null ? ", " + fmt(p.value) : ", unpriced")
+            + (p.r != null ? ", return " + fmt(p.r) + " percent" : ""));
+
+        var g = el("g", { class: "ribbon-body" }, a);
+        el("path", { d: body, fill: "url(#" + gid + ")",
+                     stroke: "rgba(42,56,72,0.10)", "stroke-width": 1 }, g);
+        el("path", { d: center, fill: "none", class: "ribbon-core",
+                     stroke: light, "stroke-opacity": 0.55, "stroke-width": 1.2 }, g);
+
+        /* internal light — beads of the currency's light travel the ribbon */
+        var flow = el("path", { d: center, fill: "none", class: "ribbon-flow",
+                     stroke: light, "stroke-width": 2.8, "stroke-linecap": "round",
+                     "stroke-dasharray": "1 38" }, g);
+        flow.style.animationDelay = (-i * 1.7) + "s";
+        flow.style.animationDuration = (7 + (i % 3) * 1.4) + "s";
+
+        /* identity tag at the ribbon's end */
+        var endPt = pts[pts.length - 1];
+        var tag = el("text", { x: endPt[0] + 16, y: endPt[1] + 4, class: "ribbon-tag" }, a);
+        tag.textContent = p.label;
+
+        /* values resolve along the surface on focus */
+        var lbl = el("text", { class: "ribbon-label", dy: -wRib / 2 - 9 }, a);
+        var tp = el("textPath", { href: "#rc" + i, startOffset: "34%" }, lbl);
+        tp.setAttribute("xlink:href", "#rc" + i);
+
+        function span(txt, cls) {
+            var ts = el("tspan", cls ? { class: cls } : {}, tp);
+            ts.textContent = txt;
+        }
+        span(p.label + "  ");
+        if (p.value != null) span(fmt(p.value) + " {{ base_currency }}  ", "rl-dim");
+        if (p.rLocal != null) span("ASSET " + (p.rLocal >= 0 ? "+" : "") + fmt(p.rLocal) + "%  ", p.rLocal >= 0 ? "rl-pos" : "rl-neg");
+        if (p.rFx != null) span("FX " + (p.rFx >= 0 ? "+" : "") + fmt(p.rFx) + "%", p.rFx >= 0 ? "rl-pos" : "rl-neg");
+    });
+
+    host.appendChild(svg);
+})();
+
+
+(function forces() {
+    document.querySelectorAll(".stratum").forEach(function (st) {
+        var bars = st.querySelectorAll(".force-bar[data-money]");
+        if (!bars.length) return;
+        var maxM = 0;
+        bars.forEach(function (b) { maxM = Math.max(maxM, Math.abs(parseFloat(b.dataset.money) || 0)); });
+        if (maxM <= 0) maxM = 1;
+        bars.forEach(function (b) {
+            var w = Math.abs(parseFloat(b.dataset.money) || 0) / maxM * 46;
+            b.style.width = Math.max(w, 0.75) + "%";
+        });
+    });
+})();
+
+
+(function confluence() {
+    var host = document.getElementById("confluence");
+    var region = document.getElementById("attribution");
+    if (!host || !region) return;
+    var d = region.dataset;
+    var aM = parseFloat(d.assetMoney), cM = parseFloat(d.currencyMoney), iM = parseFloat(d.interactionMoney);
+    var aP = parseFloat(d.assetPct),  cP = parseFloat(d.currencyPct),  iP = parseFloat(d.interactionPct);
+    var base = d.base || "";
+
+    var W = 1400, H = 470;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+        "aria-label": "Attribution: asset effect " + fmt(aP) + "%, currency effect " + fmt(cP) + "%, interaction " + fmt(iP) + "%" }, host);
+    var defs = el("defs", {}, svg);
+
+    var scale = Math.max(Math.abs(aM), Math.abs(cM), 1);
+    function thick(m) { return 10 + Math.sqrt(Math.abs(m) / scale) * 34; }
+
+    var cx = W * 0.52, cy = H * 0.48;
+
+    function current(name, color, colorInk, money, pct, y0, dir) {
+        var sign = money >= 0 ? -1 : 1;                    /* up = negative y */
+        var yEnd = cy + sign * (54 + Math.min(Math.abs(pct), 40) * 2.4) * dir;
+        var th = thick(money);
+
+        var pts = [];
+        var S = 60;
+        for (var s = 0; s <= S; s++) {
+            var t = s / S;
+            var x = 60 + t * (W - 240);
+            /* flows toward the confluence, then departs by its sign */
+            var attract = Math.exp(-Math.pow((x - cx) / 240, 2));
+            var y = y0 + (cy - y0) * Math.min(1, t * 1.7) * attract
+                  + (yEnd - y0) * t * t
+                  + Math.sin(t * 9 + dir * 2) * 4;
+            pts.push([x, y]);
+        }
+        var top = [], bot = [];
+        pts.forEach(function (pt, idx) {
+            var t = idx / S;
+            var hw = th * (0.5 + 0.5 * Math.sin(Math.min(t * 2.4, 1) * Math.PI / 2)) / 2;
+            top.push(pt[0].toFixed(1) + "," + (pt[1] - hw).toFixed(1));
+            bot.push(pt[0].toFixed(1) + "," + (pt[1] + hw).toFixed(1));
+        });
+        var gid = "cg-" + name;
+        var grad = el("linearGradient", { id: gid, x1: 0, y1: 0, x2: 1, y2: 0 }, defs);
+        el("stop", { offset: 0,    "stop-color": color, "stop-opacity": 0.10 }, grad);
+        el("stop", { offset: 0.5,  "stop-color": color, "stop-opacity": 0.30 }, grad);
+        el("stop", { offset: 1,    "stop-color": color, "stop-opacity": 0.16 }, grad);
+
+        var g = el("g", { class: "current current--" + name, tabindex: 0 }, svg);
+        var centerPath = "M" + pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" L");
+        el("path", { d: "M" + top.join(" L") + " L" + bot.reverse().join(" L") + " Z",
+                     fill: "url(#" + gid + ")", stroke: "rgba(42,56,72,0.08)", "stroke-width": 1 }, g);
+        el("path", { d: centerPath,
+                     fill: "none", stroke: color, "stroke-opacity": 0.5, "stroke-width": 1.2 }, g);
+
+        /* the force is moving — light travels with the current */
+        var flow = el("path", { d: centerPath, fill: "none", class: "current-flow",
+                     stroke: color, "stroke-width": 3.2, "stroke-linecap": "round",
+                     "stroke-dasharray": "1 46" }, g);
+        flow.style.animationDelay = (dir * 2.1) + "s";
+
+        /* label at the source */
+        var lt = el("text", { x: 60, y: y0 - th / 2 - 26, class: "current-label", fill: colorInk }, g);
+        lt.textContent = name.toUpperCase() + " EFFECT";
+        var lv = el("text", { x: 60, y: y0 - th / 2 - 8, class: "current-value",
+                              fill: money >= 0 ? "#14795F" : "#BC4740" }, g);
+        lv.textContent = (money >= 0 ? "+" : "") + fmt(pct) + "%  ·  " + (money >= 0 ? "+" : "") + fmt(money) + " " + base;
+
+        return { end: pts[pts.length - 1], th: th };
+    }
+
+    var a = current("asset",    "#6AAFFF", "#2160BE", aM, aP, cy - 118, 1);
+    var c = current("currency", "#A68CF0", "#6847CC", cM, cP, cy + 128, -1);
+
+    var gz = el("g", { class: "interaction-zone", tabindex: 0 }, svg);
+    gz.setAttribute("aria-label", "Interaction effect: " + fmt(iP) + " percent, "
+        + fmt(iM) + " " + base + " — appears only where the asset and currency forces overlap");
+
+    /* a generous invisible catch surface, so the zone is easy to hold */
+    el("ellipse", { cx: cx, cy: cy, rx: 210, ry: 120, fill: "transparent" }, gz);
+
+    var gi = el("g", { class: "interference" }, gz);
+    for (var ring = 0; ring < 4; ring++) {
+        el("ellipse", { cx: cx, cy: cy, rx: 60 + ring * 34, ry: 26 + ring * 15,
+            fill: "none", stroke: "#65D9E7", "stroke-opacity": 0.5 - ring * 0.11,
+            "stroke-width": 1 }, gi);
+    }
+    el("ellipse", { cx: cx, cy: cy, rx: 52, ry: 22, fill: "#65D9E7", "fill-opacity": 0.13 }, gi);
+    for (var m = -3; m <= 3; m++) {
+        el("path", { d: "M" + (cx - 66) + " " + (cy + m * 7) + " q 66 " + (m * 4) + " 132 0",
+            fill: "none", stroke: "#0C7E94", "stroke-opacity": 0.16, "stroke-width": 0.7 }, gi);
+    }
+
+    /* wavefronts emitted while the zone is held */
+    el("ellipse", { cx: cx, cy: cy, rx: 96, ry: 42, fill: "none", class: "ripple",
+        stroke: "#65D9E7", "stroke-opacity": 0.85, "stroke-width": 1.8 }, gz);
+    el("ellipse", { cx: cx, cy: cy, rx: 96, ry: 42, fill: "none", class: "ripple",
+        stroke: "#0C7E94", "stroke-opacity": 0.6, "stroke-width": 1.2 }, gz);
+
+    var it = el("text", { x: cx, y: cy - 74, class: "current-label", fill: "#0C7E94", "text-anchor": "middle" }, gz);
+    it.textContent = "INTERACTION";
+    var iv = el("text", { x: cx, y: cy - 56, class: "current-value", "text-anchor": "middle",
+                          fill: iM >= 0 ? "#14795F" : "#BC4740" }, gz);
+    iv.textContent = (iM >= 0 ? "+" : "") + fmt(iP) + "%  ·  " + (iM >= 0 ? "+" : "") + fmt(iM) + " " + base;
+    var is2 = el("text", { x: cx, y: cy + 96, class: "current-sub", "text-anchor": "middle" }, gz);
+    is2.textContent = "appears only where the two currents overlap";
+})();
+
+
+(function seal() {
+    var node = document.getElementById("seal-data");
+    var station = document.getElementById("seal-station");
+    if (!node || !station) return;
+    var data;
+    try {
+        data = JSON.parse(node.textContent.replace(/,\s*([\]}])/g, "$1"));
+    } catch (e) { return; }
+    if (!data || !data.positions || !data.positions.length) return;
+
+    var totalV = 0, byC = {};
+    data.positions.forEach(function (p) {
+        var v = Number(p.v) || 0;
+        if (v <= 0) return;
+        totalV += v;
+        byC[p.c] = (byC[p.c] || 0) + v;
+    });
+    if (totalV <= 0) return;
+    /* weights are internal to the seal's own inputs — never total_net_worth */
+    var rings = Object.keys(byC).map(function (c) { return { c: c, w: byC[c] / totalV }; })
+        .sort(function (a, b) { return b.w - a.w; });
+
+    var nPos = data.positions.length;
+    var petals = clamp(nPos, 3, 24);
+    var echoes = nPos > 24 ? 4 : 3;                    /* past the cap, inner detail densifies */
+    var ret = data.ret == null ? 0 : clamp(data.ret, -100, 100);
+    var rot = ret / 100 * 45;                          /* [−45°, +45°], positive = clockwise */
+
+    function lobe(R, scale, n) {
+        var d = "", S = Math.max(96, n * 12);
+        for (var i2 = 0; i2 <= S; i2++) {
+            var th = i2 / S * Math.PI * 2;
+            var r = R * scale * (0.72 + 0.28 * Math.cos(n * th));
+            d += (i2 ? "L" : "M") + (Math.cos(th) * r).toFixed(2) + "," + (Math.sin(th) * r).toFixed(2);
+        }
+        return d + "Z";
+    }
+
+    var SCALES = [1, 0.85, 0.70, 0.55, 0.42];
+    var OPS    = [0.55, 0.40, 0.28, 0.16, 0.10];
+    var WIDTHS = [0.75, 0.6, 0.5, 0.4, 0.35];
+
+    function makeSeal(size) {
+        var R = size / 2 - 2;
+        var svg = el("svg", { viewBox: (-size / 2) + " " + (-size / 2) + " " + size + " " + size,
+                              width: size, height: size, class: "seal", role: "img",
+                              "aria-label": "Portfolio seal — structure follows holdings" });
+        var rg = el("g", {}, svg);
+        rings.forEach(function (r, k) {
+            var rr = R * (0.30 + (k + 1) / (rings.length + 1) * 0.52);
+            var thick = 0.5 + r.w * 2.5;               /* share 0→1 maps to 0.5px→3px */
+            el("circle", { cx: 0, cy: 0, r: rr.toFixed(2), fill: "none", class: "seal-ring",
+                stroke: ccyInk(r.c), "stroke-opacity": 0.4, "stroke-width": thick.toFixed(2) }, rg)
+                .style.transitionDelay = (k * 60) + "ms";
+            if (r.c === data.base) {                   /* coin-edge marks the anchor */
+                el("circle", { cx: 0, cy: 0, r: (rr + thick + 1.4).toFixed(2), fill: "none",
+                    class: "seal-ring", stroke: ccyInk(r.c), "stroke-opacity": 0.22,
+                    "stroke-width": 0.5 }, rg).style.transitionDelay = (k * 60 + 30) + "ms";
+            }
+        });
+        var pg = el("g", { class: "seal-petals" }, svg);
+        for (var e2 = 0; e2 <= echoes && e2 < SCALES.length; e2++) {
+            el("path", { d: lobe(R * 0.96, SCALES[e2], petals), fill: "none",
+                stroke: "#18202A", "stroke-opacity": OPS[e2], "stroke-width": WIDTHS[e2] }, pg);
+        }
+        return { svg: svg, pg: pg };
+    }
+
+    var hero = makeSeal(110);
+    document.getElementById("seal-hero").appendChild(hero.svg);
+    station.hidden = false;
+
+    function settle() {
+        if (RM) {
+            hero.svg.classList.add("snap", "settled");
+            hero.pg.style.transform = "rotate(" + rot + "deg)";
+            setTimeout(function () { hero.svg.classList.remove("snap"); }, 60);
+            return;
+        }
+        hero.pg.style.transform = "rotate(0deg)";
+        requestAnimationFrame(function () { requestAnimationFrame(function () {
+            hero.svg.classList.add("settled");
+            hero.pg.style.transform = "rotate(" + rot + "deg)";
+        }); });
+    }
+    OS.onFinish(function () {
+        hero.svg.classList.add("snap", "settled");
+        hero.pg.style.transform = "rotate(" + rot + "deg)";
+        /* release the snap so later hover interactions ease again */
+        setTimeout(function () { hero.svg.classList.remove("snap"); }, 60);
+    });
+    setTimeout(settle, OS.active ? 700 : 120);
+
+    var btn = document.getElementById("seal-toggle");
+    var note = document.getElementById("seal-note");
+    if (btn && note) {
+        btn.addEventListener("mouseenter", function () {
+            if (!RM) hero.pg.style.transform = "rotate(" + (rot + 9) + "deg)";
+        });
+        btn.addEventListener("mouseleave", function () {
+            hero.pg.style.transform = "rotate(" + rot + "deg)";
+        });
+        function setNote(open) {
+            note.hidden = !open;
+            btn.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+        btn.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+            setNote(note.hidden);
+        });
+        document.addEventListener("click", function (ev) {
+            if (!note.hidden && !station.contains(ev.target)) setNote(false);
+        });
+        document.addEventListener("keydown", function (ev) {
+            if (ev.key === "Escape" && !note.hidden) { setNote(false); btn.focus(); }
+        });
+    }
+
+    var colo = document.querySelector(".colophon");
+    if (colo) {
+        var small = makeSeal(44);
+        small.svg.classList.add("snap", "settled");
+        small.pg.style.transform = "rotate(" + rot + "deg)";
+        colo.insertBefore(small.svg, colo.firstChild);
+    }
+})();
+
+
+(function ghost() {
+    var region = document.getElementById("attribution");
+    var row = document.getElementById("ghost-benchmark");
+    if (!region || !row) return;
+    var d = region.dataset;
+    var aP = parseFloat(d.assetPct), cP = parseFloat(d.currencyPct),
+        iP = parseFloat(d.interactionPct), tP = parseFloat(d.totalPct),
+        cM = parseFloat(d.currencyMoney), iM = parseFloat(d.interactionMoney);
+    if ([aP, cP, iP, tP, cM, iM].some(function (v) { return isNaN(v); })) return;
+
+    var dragP = cP + iP, dragM = cM + iM;
+    /* reconciliation guard: never render inconsistent numbers */
+    if (Math.abs(aP + dragP - tP) > 0.01) {
+        console.warn("ghost benchmark hidden — attribution does not reconcile:", aP, dragP, tP);
+        return;
+    }
+    /* single-currency book: a ghost identical to the body is noise */
+    if (Math.abs(dragP) < 0.05) return;
+
+    var verb = dragM < 0 ? "cost" : "contributed";
+    row.querySelector(".ghost-drag").textContent =
+        "Currency exposure " + verb + " " +
+        Math.abs(dragM).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+        " " + (d.base || "") + " · " + (dragP >= 0 ? "+" : "\u2212") + fmt(Math.abs(dragP)) + "%";
+    row.hidden = false;
+
+    var whisper = document.getElementById("ghost-whisper");
+    if (whisper) whisper.hidden = false;
+})();
+
+/* ---------- 03b · currency pressure zones ---------- */
+(function pressure() {
+    var host = document.getElementById("pressure");
+    if (!host || !POS.length) return;
+
+    var byC = {}, total = 0;
+    POS.forEach(function (p) {
+        var v = p.value || 0; total += v;
+        byC[p.currency] = (byC[p.currency] || 0) + v;
+    });
+    if (total <= 0) return;
+    var zones = Object.keys(byC).map(function (c) { return { c: c, share: byC[c] / total }; })
+        .sort(function (x, y) { return y.share - x.share; });
+
+    var W = 1400, H = 300, baseY = H - 46;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+        "aria-label": "Currency exposure: " + zones.map(function (z) { return z.c + " " + fmt(z.share * 100, 1) + "%"; }).join(", ") }, host);
+    var defs = el("defs", {}, svg);
+
+    /* the surface baseline */
+    el("line", { x1: 30, x2: W - 30, y1: baseY, y2: baseY, stroke: "rgba(42,56,72,0.2)", "stroke-width": 1 }, svg);
+
+    var x = 60, pad = 26, span = W - 120 - pad * (zones.length - 1);
+    zones.forEach(function (z, i) {
+        var zw = Math.max(span * z.share, 84);
+        var peak = 34 + Math.pow(z.share, 0.7) * 190;
+        var cx = x + zw / 2;
+        var light = ccyLight(z.c);
+
+        var gid = "pz" + i;
+        var grad = el("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+        el("stop", { offset: 0, "stop-color": light, "stop-opacity": 0.34 }, grad);
+        el("stop", { offset: 1, "stop-color": light, "stop-opacity": 0.04 }, grad);
+
+
+        var gz = el("g", { class: "pzone" }, svg);
+
+
+        var dPath = "M" + x + " " + baseY
+            + " C " + (x + zw * 0.22) + " " + baseY + ", " + (cx - zw * 0.30) + " " + (baseY - peak) + ", " + cx + " " + (baseY - peak)
+            + " C " + (cx + zw * 0.30) + " " + (baseY - peak) + ", " + (x + zw * 0.78) + " " + baseY + ", " + (x + zw) + " " + baseY + " Z";
+        el("path", { d: dPath, fill: "url(#" + gid + ")", stroke: "rgba(42,56,72,0.14)", "stroke-width": 1 }, gz);
+
+
+        for (var l = 1; l <= 3; l++) {
+            var f = l / 4;
+            el("path", { d: "M" + (x + zw * f * 0.4) + " " + baseY
+                + " C " + (x + zw * 0.3) + " " + baseY + ", " + (cx - zw * 0.2) + " " + (baseY - peak * (1 - f)) + ", " + cx + " " + (baseY - peak * (1 - f))
+                + " C " + (cx + zw * 0.2) + " " + (baseY - peak * (1 - f)) + ", " + (x + zw * (1 - f * 0.4 * 0.75)) + " " + baseY + ", " + (x + zw - zw * f * 0.28) + " " + baseY,
+                fill: "none", stroke: light, "stroke-opacity": 0.35, "stroke-width": 0.8, class: "pzone-contour" }, gz);
+        }
+
+        var lt = el("text", { x: cx, y: baseY - peak - 26, "text-anchor": "middle", class: "current-label",
+                              fill: ccyInk(z.c) }, gz);
+        lt.textContent = z.c;
+        var lv = el("text", { x: cx, y: baseY - peak - 10, "text-anchor": "middle", class: "current-sub" }, gz);
+        lv.textContent = fmt(z.share * 100, 1) + "% OF SURFACE";
+
+        x += zw + pad;
+    });
+
+    /* rescale viewBox to used width */
+    svg.setAttribute("viewBox", "0 0 " + Math.max(x + 40, 700) + " " + H);
+})();
+
+})();
+</script>
+
+</body>
+</html>

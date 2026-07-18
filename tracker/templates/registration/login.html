@@ -1,0 +1,218 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In · FX Wealth Tracker</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200..800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+
+<body>
+
+<canvas id="terrain" aria-hidden="true"></canvas>
+
+<div class="auth-shell">
+
+    <aside class="auth-brand">
+        <a href="{% url 'login' %}" class="auth-logo">
+            FX&thinsp;/&thinsp;WEALTH
+            <small>LIQUID&nbsp;CAPITAL</small>
+        </a>
+
+        <div class="auth-brand-copy">
+            <p class="auth-eyebrow">Multi-currency wealth</p>
+            <h2>
+                Capital,<br>
+                <em>given form.</em>
+            </h2>
+            <p>
+                Your holdings across markets become one continuous structure.
+                Returns decomposed into asset and currency forces, everything
+                valued at daily ECB reference rates in your base currency.
+            </p>
+        </div>
+
+        <p class="auth-footnote">FX Attribution · Monte Carlo · ECB Rates</p>
+    </aside>
+
+    <main class="auth-panel">
+        <div class="auth-card">
+
+            <p class="calib">Private ledger · Authentication</p>
+            <h1>Re-enter the landscape.</h1>
+            <p class="auth-subtitle">Sign in to observe your portfolio.</p>
+
+            <form method="post">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                    <div class="form-errors">
+                        {{ form.non_field_errors }}
+                    </div>
+                {% endif %}
+
+                <div>
+                    {{ form.username.label_tag }}
+                    {{ form.username }}
+                    <div class="field-error">{{ form.username.errors }}</div>
+                </div>
+
+                <div>
+                    {{ form.password.label_tag }}
+                    {{ form.password }}
+                    <div class="field-error">{{ form.password.errors }}</div>
+                </div>
+
+                <button type="submit" class="vault-submit" data-busy="OPENING…">&rarr; Open the ledger</button>
+            </form>
+
+            <p class="auth-switch">
+                <a href="{% url 'register' %}" class="vault-link">+ INTAKE · Establish a new ledger</a>
+            </p>
+
+        </div>
+    </main>
+
+</div>
+
+
+<script>
+/* ================================================================
+   THE VAULT DOOR — successful entry folds the cover open.
+   Progressive enhancement only: without JS, or under reduced motion,
+   the form submits natively and everything works as before. CSRF is
+   sent in both body and header. Nothing auth-related is ever stored
+   client-side.
+   ================================================================ */
+(function () {
+    var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (RM || !window.fetch || !window.FormData || !window.DOMParser) return;
+
+    document.addEventListener("submit", function (ev) {
+        var form = ev.target;
+        if (!form.closest || !form.closest(".auth-card")) return;
+        var card = form.closest(".auth-card");
+        ev.preventDefault();
+
+        var btn = form.querySelector(".vault-submit");
+        if (btn) {
+            if (btn.disabled) return;                 /* no double-submit */
+            btn.dataset.label = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = btn.dataset.busy || "OPENING\u2026";
+        }
+
+        var csrf = form.querySelector('input[name="csrfmiddlewaretoken"]');
+        fetch(form.getAttribute("action") || window.location.href, {
+            method: "POST",
+            body: new FormData(form),
+            credentials: "same-origin",
+            headers: csrf ? { "X-CSRFToken": csrf.value } : {}
+        }).then(function (resp) {
+            if (resp.redirected) { openVault(resp.url); return null; }
+            return resp.text().then(function (html) { decline(card, html, btn); });
+        }).catch(function () {
+            /* network hiccup — fall back to a native submit */
+            if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
+            HTMLFormElement.prototype.submit.call(form);
+        });
+    }, true);
+
+    /* the vault does not rattle; it simply declines — errors fade in */
+    function decline(card, html, btn) {
+        var fresh = null;
+        try { fresh = new DOMParser().parseFromString(html, "text/html").querySelector(".auth-card"); }
+        catch (e) {}
+        if (!fresh) {
+            if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
+            return;
+        }
+        card.style.transition = "opacity 0.15s ease";
+        card.style.opacity = "0";
+        setTimeout(function () {
+            card.innerHTML = fresh.innerHTML;
+            card.style.opacity = "1";
+        }, 160);
+    }
+
+    /* the cover splits along its centerline and folds open onto the room */
+    function openVault(url) {
+        var card = document.querySelector(".auth-card");
+        if (!card) { window.location.assign(url); return; }
+        var r = card.getBoundingClientRect();
+        var door = document.createElement("div");
+        door.className = "vault-door";
+        door.style.left = r.left + "px";
+        door.style.top = r.top + "px";
+        door.style.width = r.width + "px";
+        door.style.height = r.height + "px";
+        ["left", "right"].forEach(function (side) {
+            var half = document.createElement("div");
+            half.className = "vault-half vault-half--" + side;
+            var clone = card.cloneNode(true);
+            clone.style.margin = "0";
+            clone.style.width = r.width + "px";
+            half.appendChild(clone);
+            door.appendChild(half);
+        });
+        document.body.appendChild(door);
+        card.style.visibility = "hidden";
+        document.body.classList.add("vault-opening");
+        requestAnimationFrame(function () { requestAnimationFrame(function () {
+            door.classList.add("open");
+        }); });
+        setTimeout(function () { window.location.assign(url); }, 480);
+    }
+})();
+</script>
+
+<script>
+/* the landscape breathes behind the threshold */
+(function () {
+    var c = document.getElementById("terrain");
+    if (!c) return;
+    var RM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var ctx = c.getContext("2d");
+    var w, h, dpr;
+    function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        c.width = window.innerWidth * dpr; c.height = window.innerHeight * dpr;
+        w = c.width; h = c.height;
+    }
+    window.addEventListener("resize", resize);
+    resize();
+    var t = 0, last = 0;
+    function draw(now) {
+        var dt = Math.min((now - last) / 1000, 0.1); last = now; t += dt * 0.35;
+        ctx.clearRect(0, 0, w, h);
+        for (var i = 0; i < 24; i++) {
+            var base = h * (0.34 + i * 0.032);
+            ctx.beginPath();
+            var step = 9 * dpr;
+            for (var px = -step; px <= w + step; px += step) {
+                var x = px / w;
+                var y = base
+                    - Math.exp(-Math.pow((x - 0.22) / 0.16, 2)) * h * 0.15 * (1 - i / 30)
+                    - Math.sin(x * 7 + t * 0.32 + i * 0.24) * h * 0.011
+                    - Math.sin(x * 15 + t * 0.2 + i * 0.4) * h * 0.004;
+                px <= 0 ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+            }
+            ctx.strokeStyle = "rgba(42,56,72," + (0.03 + 0.045 * Math.exp(-Math.pow((i - 3) / 6, 2))).toFixed(3) + ")";
+            ctx.lineWidth = dpr * (i === 3 ? 1.2 : 0.75);
+            ctx.stroke();
+        }
+        if (!RM) requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+})();
+</script>
+
+</body>
+</html>
