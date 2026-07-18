@@ -60,7 +60,7 @@
                 <div class="field-group">
                     <label for="{{ form.currency.id_for_label }}">Currency</label>
                     {{ form.currency }}
-                    <small>The currency this position lives in — its internal light on the landscape.</small>
+                    <small>The currency this position lives in</small>
                     <div class="field-error">{{ form.currency.errors }}</div>
                 </div>
 
@@ -77,7 +77,7 @@
                 <div class="field-group">
                     <label for="{{ form.ticker.id_for_label }}">Ticker</label>
                     {{ form.ticker }}
-                    <small>Only for listed equities and ETFs. Yahoo Finance notation: US tickers are bare (AAPL); every other exchange appends a suffix — NESN.SW Zurich, VOD.L London, ASML.AS Amsterdam. Not sure of yours? <a href="https://finance.yahoo.com/lookup/" target="_blank" rel="noopener">Look it up</a> — and make sure the currency above matches the listing.</small>
+                    <small>Only for listed equities and ETFs. Yahoo Finance notation: US tickers are bare (AAPL); every other exchange appends a suffix: NESN.SW Zurich, VOD.L London, ASML.AS Amsterdam. Not sure of yours? <a href="https://finance.yahoo.com/lookup/" target="_blank" rel="noopener">Look it up</a> and make sure the currency above matches the listing.</small>
                     <div class="field-error">{{ form.ticker.errors }}</div>
                 </div>
 
