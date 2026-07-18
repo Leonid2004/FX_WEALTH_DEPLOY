@@ -248,7 +248,7 @@ class HomeView(LoginRequiredMixin, ListView):
             context["port_asset_pct"] = None
             context["port_currency_pct"] = None
             context["port_interaction_pct"] = None
-            context["port_total_pct"] = Non
+            context["port_total_pct"] = None
 
 
         return context

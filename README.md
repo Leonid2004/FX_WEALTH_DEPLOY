@@ -6,7 +6,7 @@ Live demo: **[fx.gurevich.com](https://fx.gurevich.com)** · demo login: `demo` 
 
 ## Stack
 
-Django 4.2 · PostgreSQL (SQLite in development) · NumPy · pandas · yfinance · ECB SDMX API · WhiteNoise · Gunicorn · deployed on Railway with automatic migrations per release
+Django 5.2 · PostgreSQL (SQLite in development) · NumPy · pandas · yfinance · ECB SDMX API · WhiteNoise · Gunicorn · deployed on Railway with automatic migrations per release
 
 ---
 
