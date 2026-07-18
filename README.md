@@ -7,6 +7,7 @@ Live demo: **[fx.gurevich.com](https://fx.gurevich.com)** · demo login: `demo` 
 ## Stack
 
 Django 4.2 · PostgreSQL (SQLite in development) · NumPy · pandas · yfinance · ECB SDMX API · WhiteNoise · Gunicorn · deployed on Railway with automatic migrations per release
+
 ---
 
 ## What it does
@@ -69,7 +70,7 @@ The public demo portfolio intentionally includes a thin-history listing to show 
 ## Running locally
 
 ```bash
-git clone https://github.com/Leonid2004/FX_Wealth_Tracker_Public.git
+git clone https://github.com/Leonid2004/FX_WEALTH_DEPLOY.git
 cd FX_Wealth_Tracker_Public
 python -m venv venv
 venv\Scripts\activate          # Windows  ·  source venv/bin/activate on macOS/Linux
@@ -101,3 +102,4 @@ The suite covers the attribution identity against hand-derived values, Monte Car
 ## Author
 
 Built by Leo Gurevich
+https://www.linkedin.com/in/leonid-gurevich-/
