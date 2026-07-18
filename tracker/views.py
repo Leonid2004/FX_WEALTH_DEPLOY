@@ -244,7 +244,11 @@ class HomeView(LoginRequiredMixin, ListView):
             context["port_interaction_pct"] = port_interaction_money / port_start_value * 100
             context["port_total_pct"] = port_total_money / port_start_value * 100
         else:
-            context["port_asset_pct"] = None  # nothing attributable yet
+            context["port_total_money"] = None
+            context["port_asset_pct"] = None
+            context["port_currency_pct"] = None
+            context["port_interaction_pct"] = None
+            context["port_total_pct"] = Non
 
 
         return context

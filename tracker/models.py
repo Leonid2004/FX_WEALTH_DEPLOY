@@ -71,10 +71,10 @@ class Position(models.Model):
 
                         })
 
-                  if self.quantity == 0:
+                  if self.quantity is None or self.quantity <= 0:
                         raise ValidationError({
 
-                              "quantity": "Quantity is required for listed equities and ETFs."
+                              "quantity": "Quantity must be a positive number for listed equities and ETFs."
 
                         })
 

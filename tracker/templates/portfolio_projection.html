@@ -129,7 +129,7 @@
             <div class="condition">
                 <p class="calib calib--bare">90% of futures land within</p>
                 <p class="condition-value">{{ sim.p5|floatformat:0 }} &ndash; {{ sim.p95|floatformat:0 }}<span class="unit">{{ base_currency }}</span></p>
-                <p class="condition-sub">{{ sim.p5_return_pct|floatformat:1 }}% to +{{ sim.p95_return_pct|floatformat:1 }}%</p>
+                <p class="condition-sub">{{ sim.p5_return_pct|floatformat:1 }}% to {% if sim.p95_return_pct >= 0 %}+{% endif %}{{ sim.p95_return_pct|floatformat:1 }}%</p>
             </div>
            <div class="condition">
                 <p class="calib calib--bare">Value at risk · 95%</p>
