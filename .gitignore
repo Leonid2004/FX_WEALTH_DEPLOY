@@ -7,3 +7,4 @@ __pycache__/
 .vscode/
 media/
 db.sqlite3
+staticfiles/
