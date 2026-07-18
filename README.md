@@ -76,6 +76,10 @@ python -m venv venv
 venv\Scripts\activate          # Windows  ·  source venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
 
+# mark this as a local dev run — without it the app refuses to start,
+# because production mode requires a real SECRET_KEY
+set DEBUG=True                 # Windows  ·  export DEBUG=True on macOS/Linux
+
 python manage.py migrate       # build the schema
 python manage.py backfill      # load FX history (2000→today) + price history for held tickers
 python manage.py createsuperuser
