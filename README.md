@@ -71,7 +71,7 @@ The public demo portfolio intentionally includes a thin-history listing to show 
 
 ```bash
 git clone https://github.com/Leonid2004/FX_WEALTH_DEPLOY.git
-cd FX_Wealth_Tracker_Public
+cd FX_WEALTH_DEPLOY
 python -m venv venv
 venv\Scripts\activate          # Windows  ·  source venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
